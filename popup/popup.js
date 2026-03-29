@@ -501,7 +501,7 @@ els.btnClear.addEventListener('click', () => {
   state.navigationHistory = null;
 
   // Clear storage
-  chrome.storage.local.remove(['annotatedScreenshot', 'capturedElement']);
+  chrome.storage.local.remove(['annotatedScreenshot', 'capturedElement', 'bugjarForm']);
 
   // Reset captured badges on buttons
   [els.btnScreenshot, els.btnElement, els.btnConsole, els.btnNetwork].forEach(btn => {
@@ -680,7 +680,7 @@ function buildAndDownloadReport() {
   state.navigationHistory = null;
 
   // Clear chrome.storage.local
-  chrome.storage.local.remove(['annotatedScreenshot', 'capturedElement']);
+  chrome.storage.local.remove(['annotatedScreenshot', 'capturedElement', 'bugjarForm']);
 
   // Clear UI
   els.description.value = '';
@@ -947,9 +947,35 @@ function buildReportMarkdown(ctx) {
 document.querySelector('.header-version').textContent = 'v' + chrome.runtime.getManifest().version;
 
 // ============================================================================
+// Auto-save form fields on every change (survives popup close/reopen)
+// ============================================================================
+function saveFormFields() {
+  chrome.storage.local.set({
+    bugjarForm: {
+      description: els.description.value,
+      steps: els.steps.value,
+      category: els.category.value,
+      priority: els.priority.value,
+    }
+  });
+}
+els.description.addEventListener('input', saveFormFields);
+els.steps.addEventListener('input', saveFormFields);
+els.category.addEventListener('change', saveFormFields);
+els.priority.addEventListener('change', saveFormFields);
+
+// ============================================================================
 // Restore persisted data on popup open (CRIT-2 + update banner)
 // ============================================================================
-chrome.storage.local.get(['annotatedScreenshot', 'capturedElement', 'updateAvailable', 'bugjarLang', 'helpDismissed'], (stored) => {
+chrome.storage.local.get(['annotatedScreenshot', 'capturedElement', 'updateAvailable', 'bugjarLang', 'helpDismissed', 'bugjarForm'], (stored) => {
+  // Restore form fields
+  if (stored.bugjarForm) {
+    if (stored.bugjarForm.description) els.description.value = stored.bugjarForm.description;
+    if (stored.bugjarForm.steps) els.steps.value = stored.bugjarForm.steps;
+    if (stored.bugjarForm.category) els.category.value = stored.bugjarForm.category;
+    if (stored.bugjarForm.priority) els.priority.value = stored.bugjarForm.priority;
+  }
+
   if (stored.annotatedScreenshot) {
     // P3-19: push to screenshots array
     if (state.screenshots.length >= MAX_SCREENSHOTS) state.screenshots.shift();
