@@ -900,7 +900,7 @@ document.querySelector('.header-version').textContent = 'v' + chrome.runtime.get
 // ============================================================================
 // Restore persisted data on popup open (CRIT-2 + update banner)
 // ============================================================================
-chrome.storage.local.get(['annotatedScreenshot', 'capturedElement', 'updateAvailable', 'bugjarLang'], (stored) => {
+chrome.storage.local.get(['annotatedScreenshot', 'capturedElement', 'updateAvailable', 'bugjarLang', 'helpDismissed'], (stored) => {
   if (stored.annotatedScreenshot) {
     // P3-19: push to screenshots array
     if (state.screenshots.length >= MAX_SCREENSHOTS) state.screenshots.shift();
@@ -928,6 +928,11 @@ chrome.storage.local.get(['annotatedScreenshot', 'capturedElement', 'updateAvail
     document.querySelector('.header').after(banner);
   }
 
+  // Show help panel on first ever open
+  if (!stored.helpDismissed) {
+    document.getElementById('help-panel').classList.add('visible');
+  }
+
   // P3-20: Initialize i18n
   const savedLang = stored.bugjarLang || detectLanguage();
   applyTranslations(savedLang);
@@ -938,5 +943,17 @@ document.querySelectorAll('.lang-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     applyTranslations(btn.dataset.lang);
   });
+});
+
+// ============================================================================
+// Help panel
+// ============================================================================
+document.getElementById('btn-help').addEventListener('click', () => {
+  document.getElementById('help-panel').classList.toggle('visible');
+});
+
+document.getElementById('btn-help-dismiss').addEventListener('click', () => {
+  document.getElementById('help-panel').classList.remove('visible');
+  chrome.storage.local.set({ helpDismissed: true });
 });
 

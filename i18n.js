@@ -31,7 +31,22 @@ const TRANSLATIONS = {
     priLow: 'Low',
     priMedium: 'Medium',
     priHigh: 'High',
-    priCritical: 'Critical'
+    priCritical: 'Critical',
+    // Help panel
+    helpStep1Title: 'Navigate to the bug',
+    helpStep1Desc: 'Go to the page where you see the issue',
+    helpStep2Title: 'Describe the problem',
+    helpStep2Desc: 'Write what happened vs what you expected',
+    helpStep3Title: 'Capture evidence',
+    helpStep3Desc: 'Click Capture All for a quick capture, or use individual buttons for more control',
+    helpStep4Title: 'Annotate (optional)',
+    helpStep4Desc: 'Use the screenshot button to annotate with arrows, circles, and text',
+    helpStep5Title: 'Generate & share',
+    helpStep5Desc: 'Click Generate Report to download a file. Send it to your developer or paste it into Claude/ChatGPT',
+    helpShortcutsTitle: 'Keyboard shortcuts',
+    helpShortcutOpen: 'Open BugJar',
+    helpShortcutCapture: 'Quick capture all',
+    helpDismiss: 'Got it!'
   },
   fr: {
     description: 'Description',
@@ -56,7 +71,22 @@ const TRANSLATIONS = {
     priLow: 'Basse',
     priMedium: 'Moyenne',
     priHigh: 'Haute',
-    priCritical: 'Critique'
+    priCritical: 'Critique',
+    // Help panel
+    helpStep1Title: 'Naviguez vers le bug',
+    helpStep1Desc: 'Allez sur la page ou vous voyez le probleme',
+    helpStep2Title: 'Decrivez le probleme',
+    helpStep2Desc: 'Ecrivez ce qui s\'est passe vs ce que vous attendiez',
+    helpStep3Title: 'Capturez les preuves',
+    helpStep3Desc: 'Cliquez sur Tout capturer pour une capture rapide, ou utilisez les boutons individuels',
+    helpStep4Title: 'Annotez (optionnel)',
+    helpStep4Desc: 'Utilisez le bouton capture pour annoter avec des fleches, cercles et texte',
+    helpStep5Title: 'Generez et partagez',
+    helpStep5Desc: 'Cliquez sur Generer le rapport pour telecharger un fichier. Envoyez-le a votre developpeur ou collez-le dans Claude/ChatGPT',
+    helpShortcutsTitle: 'Raccourcis clavier',
+    helpShortcutOpen: 'Ouvrir BugJar',
+    helpShortcutCapture: 'Capture rapide',
+    helpDismiss: 'Compris !'
   },
   es: {
     description: 'Descripcion',
@@ -81,7 +111,22 @@ const TRANSLATIONS = {
     priLow: 'Baja',
     priMedium: 'Media',
     priHigh: 'Alta',
-    priCritical: 'Critica'
+    priCritical: 'Critica',
+    // Help panel
+    helpStep1Title: 'Navega al bug',
+    helpStep1Desc: 'Ve a la pagina donde ves el problema',
+    helpStep2Title: 'Describe el problema',
+    helpStep2Desc: 'Escribe lo que paso vs lo que esperabas',
+    helpStep3Title: 'Captura evidencia',
+    helpStep3Desc: 'Haz clic en Capturar todo para una captura rapida, o usa los botones individuales',
+    helpStep4Title: 'Anota (opcional)',
+    helpStep4Desc: 'Usa el boton de captura para anotar con flechas, circulos y texto',
+    helpStep5Title: 'Genera y comparte',
+    helpStep5Desc: 'Haz clic en Generar informe para descargar un archivo. Envialo a tu desarrollador o pegalo en Claude/ChatGPT',
+    helpShortcutsTitle: 'Atajos de teclado',
+    helpShortcutOpen: 'Abrir BugJar',
+    helpShortcutCapture: 'Captura rapida',
+    helpDismiss: 'Entendido!'
   }
 };
 

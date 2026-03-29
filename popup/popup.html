@@ -18,7 +18,53 @@
       <button class="lang-btn" data-lang="fr" title="Français">FR</button>
       <button class="lang-btn" data-lang="es" title="Español">ES</button>
     </div>
+    <button class="help-btn" id="btn-help" title="How to use BugJar">?</button>
     <button class="clear-btn" id="btn-clear" title="Clear all captures" data-i18n="clear">Clear</button>
+  </div>
+
+  <!-- Help panel (hidden by default, shown on first open) -->
+  <div class="help-panel" id="help-panel">
+    <div class="help-step">
+      <span class="help-number">1</span>
+      <div class="help-content">
+        <strong data-i18n="helpStep1Title">Navigate to the bug</strong>
+        <p data-i18n="helpStep1Desc">Go to the page where you see the issue</p>
+      </div>
+    </div>
+    <div class="help-step">
+      <span class="help-number">2</span>
+      <div class="help-content">
+        <strong data-i18n="helpStep2Title">Describe the problem</strong>
+        <p data-i18n="helpStep2Desc">Write what happened vs what you expected</p>
+      </div>
+    </div>
+    <div class="help-step">
+      <span class="help-number">3</span>
+      <div class="help-content">
+        <strong data-i18n="helpStep3Title">Capture evidence</strong>
+        <p data-i18n="helpStep3Desc">Click <em>Capture All</em> for a quick capture, or use individual buttons for more control</p>
+      </div>
+    </div>
+    <div class="help-step">
+      <span class="help-number">4</span>
+      <div class="help-content">
+        <strong data-i18n="helpStep4Title">Annotate (optional)</strong>
+        <p data-i18n="helpStep4Desc">Use the screenshot button to annotate with arrows, circles, and text</p>
+      </div>
+    </div>
+    <div class="help-step">
+      <span class="help-number">5</span>
+      <div class="help-content">
+        <strong data-i18n="helpStep5Title">Generate & share</strong>
+        <p data-i18n="helpStep5Desc">Click <em>Generate Report</em> to download a file. Send it to your developer or paste it into Claude/ChatGPT</p>
+      </div>
+    </div>
+    <div class="help-shortcuts">
+      <strong data-i18n="helpShortcutsTitle">Keyboard shortcuts</strong>
+      <p><kbd>Ctrl+Shift+B</kbd> <span data-i18n="helpShortcutOpen">Open BugJar</span></p>
+      <p><kbd>Ctrl+Shift+J</kbd> <span data-i18n="helpShortcutCapture">Quick capture all</span></p>
+    </div>
+    <button class="help-dismiss" id="btn-help-dismiss" data-i18n="helpDismiss">Got it!</button>
   </div>
 
   <!-- Main content -->
