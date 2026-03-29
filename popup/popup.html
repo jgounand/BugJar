@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="popup.css">
+  <title>BugJar</title>
+</head>
+<body>
+  <!-- Header -->
+  <div class="header">
+    <span class="header-logo">🐞</span>
+    <h1>BugJar</h1>
+    <span class="header-version">v1.0.0</span>
+  </div>
+
+  <!-- Main content -->
+  <div class="content">
+    <!-- Description -->
+    <div class="form-group">
+      <label for="description">Description</label>
+      <textarea id="description" placeholder="Describe the issue..."></textarea>
+    </div>
+
+    <!-- Category + Priority -->
+    <div class="form-row">
+      <div class="form-group">
+        <label for="category">Category</label>
+        <select id="category">
+          <option value="bug">Bug</option>
+          <option value="feature">Feature Request</option>
+          <option value="question">Question</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="priority">Priority</label>
+        <select id="priority">
+          <option value="low">Low</option>
+          <option value="medium" selected>Medium</option>
+          <option value="high">High</option>
+          <option value="critical">Critical</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Capture buttons -->
+    <div class="capture-section">
+      <label>Captures</label>
+      <div class="capture-buttons">
+        <button class="capture-btn" id="btn-screenshot">
+          <span class="icon">📸</span>
+          <span class="label">Screenshot</span>
+        </button>
+        <button class="capture-btn" id="btn-element">
+          <span class="icon">🖱️</span>
+          <span class="label">Select Element</span>
+        </button>
+        <button class="capture-btn" id="btn-console">
+          <span class="icon">📋</span>
+          <span class="label">Console</span>
+        </button>
+        <button class="capture-btn" id="btn-network">
+          <span class="icon">🌐</span>
+          <span class="label">Network</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Captured data preview badges -->
+    <div class="captured-preview" id="captured-preview">
+      <!-- Badges dynamically inserted here -->
+    </div>
+
+    <!-- Screenshot thumbnail -->
+    <div class="screenshot-preview" id="screenshot-preview">
+      <img id="screenshot-img" src="" alt="Captured screenshot">
+    </div>
+
+    <!-- Element info -->
+    <div class="element-preview" id="element-preview"></div>
+
+    <!-- Generate report -->
+    <button class="generate-btn" id="btn-generate">Generate Report</button>
+  </div>
+
+  <!-- Status bar -->
+  <div class="status-bar" id="status-bar">Ready</div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="annotate.css">
+  <title>BugJar - Annotate Screenshot</title>
+</head>
+<body>
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <span class="toolbar-title">Annotate Screenshot</span>
+
+    <div class="toolbar-divider"></div>
+
+    <!-- Drawing tools -->
+    <button class="tool-btn active" id="tool-pen" title="Pen (freehand draw)">&#x270F;&#xFE0F;</button>
+    <button class="tool-btn" id="tool-arrow" title="Arrow">&#x27A1;&#xFE0F;</button>
+    <button class="tool-btn" id="tool-rect" title="Rectangle">&#x25FB;&#xFE0F;</button>
+    <button class="tool-btn" id="tool-text" title="Text label">&#x1F524;</button>
+
+    <div class="toolbar-divider"></div>
+
+    <!-- Color picker -->
+    <div class="color-picker">
+      <div class="color-swatch active" data-color="#e74c3c" style="background:#e74c3c;" title="Red"></div>
+      <div class="color-swatch" data-color="#3498db" style="background:#3498db;" title="Blue"></div>
+      <div class="color-swatch" data-color="#27ae60" style="background:#27ae60;" title="Green"></div>
+      <div class="color-swatch" data-color="#f1c40f" style="background:#f1c40f;" title="Yellow"></div>
+      <div class="color-swatch" data-color="#1a1a2e" style="background:#1a1a2e;border:1px solid #555;" title="Black"></div>
+    </div>
+
+    <div class="toolbar-divider"></div>
+
+    <!-- Thickness -->
+    <div class="thickness-group">
+      <span class="thickness-label">Size</span>
+      <input type="range" class="thickness-slider" id="thickness" min="1" max="12" value="3">
+    </div>
+
+    <div class="toolbar-divider"></div>
+
+    <!-- Actions -->
+    <button class="tool-btn action-btn" id="btn-undo" title="Undo">&#x21A9;&#xFE0F; <span>Undo</span></button>
+    <button class="tool-btn action-btn" id="btn-clear" title="Clear all">&#x1F5D1;&#xFE0F; <span>Clear</span></button>
+
+    <div class="toolbar-spacer"></div>
+
+    <!-- Done -->
+    <button class="done-btn" id="btn-done">&#x2705; Done</button>
+  </div>
+
+  <!-- Canvas area -->
+  <div class="canvas-container" id="canvas-container">
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <!-- Text input overlay -->
+  <div class="text-input-overlay" id="text-input-overlay">
+    <input type="text" id="text-input" placeholder="Type text...">
+  </div>
+
+  <script src="annotate.js"></script>
+</body>
+</html>
