@@ -12,6 +12,7 @@
     <span class="header-logo">🐞</span>
     <h1>BugJar</h1>
     <span class="header-version">v1.1.0</span>
+    <button class="clear-btn" id="btn-clear" title="Clear all captures">Clear</button>
   </div>
 
   <!-- Main content -->
@@ -20,6 +21,12 @@
     <div class="form-group">
       <label for="description">Description</label>
       <textarea id="description" placeholder="Describe the issue..."></textarea>
+    </div>
+
+    <!-- Steps to reproduce -->
+    <div class="form-group">
+      <label for="steps">Steps to reproduce</label>
+      <textarea id="steps" placeholder="1. Go to...&#10;2. Click on...&#10;3. See error..."></textarea>
     </div>
 
     <!-- Category + Priority -->
@@ -47,6 +54,9 @@
     <!-- Capture buttons -->
     <div class="capture-section">
       <label>Captures</label>
+      <button class="capture-all-btn" id="btn-capture-all">
+        Capture All (Screenshot + Console + Network)
+      </button>
       <div class="capture-buttons">
         <button class="capture-btn" id="btn-screenshot">
           <span class="icon">📸</span>

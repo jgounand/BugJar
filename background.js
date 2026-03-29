@@ -50,6 +50,13 @@ function isNewerVersion(latest, current) {
 // Message handler
 // ---------------------------------------------------------------------------
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // P1-7: Badge for console errors detected by content script
+  if (message.action === 'consoleErrorDetected' && message.count > 0) {
+    chrome.action.setBadgeText({ text: String(message.count) });
+    chrome.action.setBadgeBackgroundColor({ color: '#e74c3c' });
+    return;
+  }
+
   switch (message.action) {
     case 'captureScreenshot':
       handleCaptureScreenshot(sendResponse);

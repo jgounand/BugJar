@@ -45,6 +45,18 @@
         consoleLogs.shift();
       }
 
+      // Notify background of error count for badge
+      if (level === 'error') {
+        try {
+          chrome.runtime.sendMessage({
+            action: 'consoleErrorDetected',
+            count: consoleLogs.filter(l => l.level === 'error').length
+          });
+        } catch {
+          // Extension context may be invalidated — ignore
+        }
+      }
+
       // Call original
       originalConsole[level](...args);
     };
@@ -231,7 +243,7 @@
       const cancelBtn = document.createElement('button');
       cancelBtn.textContent = 'Cancel';
       cancelBtn.style.cssText = 'background:#fff;color:#e94560;border:none;padding:6px 16px;border-radius:4px;cursor:pointer;font:13px system-ui;font-weight:600;';
-      cancelBtn.addEventListener('click', () => deactivateInspector());
+      cancelBtn.addEventListener('click', () => { deactivateInspector(); showToast('Inspector cancelled', 'error'); });
       bannerEl.appendChild(cancelBtn);
 
       document.body.appendChild(bannerEl);
@@ -400,6 +412,13 @@
       selectedElementInfo
     );
 
+    // Toast confirmation
+    var toastLabel = selectedElementInfo.tagName;
+    if (selectedElementInfo.classes && selectedElementInfo.classes.length) {
+      toastLabel += '.' + selectedElementInfo.classes.slice(0, 2).join('.');
+    }
+    showToast('Element captured: ' + toastLabel);
+
     // Store in chrome.storage + notify
     chrome.storage.local.set({ capturedElement: selectedElementInfo });
     chrome.runtime.sendMessage({
@@ -425,7 +444,21 @@
   }
 
   // =========================================================================
-  // 4. MESSAGE HANDLER
+  // 4. TOAST NOTIFICATIONS
+  // =========================================================================
+  function showToast(message, type) {
+    if (type === undefined) type = 'success';
+    var toast = document.createElement('div');
+    toast.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:2147483647;background:' +
+      (type === 'success' ? '#27ae60' : '#e94560') +
+      ';color:#fff;padding:12px 20px;border-radius:8px;font:14px system-ui,sans-serif;box-shadow:0 4px 12px rgba(0,0,0,0.3);transition:opacity 0.3s;';
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(function () { toast.style.opacity = '0'; setTimeout(function () { toast.remove(); }, 300); }, 3000);
+  }
+
+  // =========================================================================
+  // 5. MESSAGE HANDLER
   // =========================================================================
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     switch (message.action) {

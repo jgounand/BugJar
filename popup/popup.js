@@ -29,12 +29,15 @@ const state = {
 // ============================================================================
 const els = {
   description: document.getElementById('description'),
+  steps: document.getElementById('steps'),
   category: document.getElementById('category'),
   priority: document.getElementById('priority'),
   btnScreenshot: document.getElementById('btn-screenshot'),
   btnElement: document.getElementById('btn-element'),
   btnConsole: document.getElementById('btn-console'),
   btnNetwork: document.getElementById('btn-network'),
+  btnCaptureAll: document.getElementById('btn-capture-all'),
+  btnClear: document.getElementById('btn-clear'),
   btnGenerate: document.getElementById('btn-generate'),
   capturedPreview: document.getElementById('captured-preview'),
   screenshotPreview: document.getElementById('screenshot-preview'),
@@ -49,6 +52,13 @@ const els = {
 function setStatus(text, type = '') {
   els.statusBar.textContent = text;
   els.statusBar.className = 'status-bar' + (type ? ' ' + type : '');
+  if (type === 'success') {
+    clearTimeout(setStatus._timer);
+    setStatus._timer = setTimeout(() => {
+      els.statusBar.textContent = 'Ready';
+      els.statusBar.className = 'status-bar';
+    }, 4000);
+  }
 }
 
 function markCaptured(btn) {
@@ -351,6 +361,106 @@ els.btnNetwork.addEventListener('click', async () => {
 });
 
 // ============================================================================
+// Capture All — sequential: screenshot (raw) + console + network + tab info
+// ============================================================================
+els.btnCaptureAll.addEventListener('click', async () => {
+  els.btnCaptureAll.disabled = true;
+
+  // 1/3 — Screenshot (raw, no annotation editor)
+  setStatus('Capturing 1/3 — Screenshot...');
+  const screenshotOk = await new Promise((resolve) => {
+    chrome.runtime.sendMessage({ action: 'captureScreenshot' }, (response) => {
+      if (response && response.success) {
+        state.screenshot = response.dataUrl;
+        markCaptured(els.btnScreenshot);
+        showScreenshotPreview(state.screenshot);
+        updatePreviewBadges();
+        resolve(true);
+      } else {
+        resolve(false);
+      }
+    });
+  });
+  if (!screenshotOk) {
+    setStatus('Screenshot failed, continuing...', 'error');
+  }
+
+  // 2/3 — Console logs
+  setStatus('Capturing 2/3 — Console...');
+  const tabId = await ensureContentScript();
+  if (tabId) {
+    await new Promise((resolve) => {
+      chrome.tabs.sendMessage(tabId, { action: 'getConsoleLogs' }, (response) => {
+        if (response && response.success) {
+          state.consoleLogs = response.logs;
+          markCaptured(els.btnConsole);
+          updatePreviewBadges();
+        }
+        resolve();
+      });
+    });
+
+    // 3/3 — Network logs
+    setStatus('Capturing 3/3 — Network...');
+    await new Promise((resolve) => {
+      chrome.tabs.sendMessage(tabId, { action: 'getNetworkLogs' }, (response) => {
+        if (response && response.success) {
+          state.networkLogs = response.logs;
+          markCaptured(els.btnNetwork);
+          updatePreviewBadges();
+        }
+        resolve();
+      });
+    });
+  }
+
+  // Also grab tab info
+  await new Promise((resolve) => {
+    chrome.runtime.sendMessage({ action: 'getActiveTabInfo' }, (res) => {
+      if (res && res.success) state.tabInfo = res.tabInfo;
+      resolve();
+    });
+  });
+
+  els.btnCaptureAll.disabled = false;
+  setStatus('All captured!', 'success');
+});
+
+// ============================================================================
+// Clear / Reset
+// ============================================================================
+els.btnClear.addEventListener('click', () => {
+  // Reset state
+  state.screenshot = null;
+  state.consoleLogs = null;
+  state.networkLogs = null;
+  state.elementInfo = null;
+  state.tabInfo = null;
+
+  // Clear storage
+  chrome.storage.local.remove(['annotatedScreenshot', 'capturedElement']);
+
+  // Reset captured badges on buttons
+  [els.btnScreenshot, els.btnElement, els.btnConsole, els.btnNetwork].forEach(btn => {
+    btn.classList.remove('captured');
+  });
+
+  // Clear form fields
+  els.description.value = '';
+  els.steps.value = '';
+
+  // Hide previews
+  els.screenshotPreview.classList.remove('visible');
+  els.screenshotImg.src = '';
+  els.elementPreview.classList.remove('visible');
+  els.elementPreview.replaceChildren();
+  els.capturedPreview.replaceChildren();
+  els.capturedPreview.classList.remove('has-data');
+
+  setStatus('Cleared', 'success');
+});
+
+// ============================================================================
 // Generate Report
 // ============================================================================
 els.btnGenerate.addEventListener('click', () => {
@@ -361,15 +471,69 @@ els.btnGenerate.addEventListener('click', () => {
     if (res && res.success) {
       state.tabInfo = res.tabInfo;
     }
+
+    // Preview summary before download
+    const parts = [];
+    if (state.screenshot) parts.push('1 screenshot');
+    if (state.consoleLogs) {
+      const errCount = state.consoleLogs.filter(l => l.level === 'error').length;
+      parts.push(errCount + ' error' + (errCount !== 1 ? 's' : ''));
+    }
+    if (state.networkLogs) parts.push(state.networkLogs.length + ' request' + (state.networkLogs.length !== 1 ? 's' : ''));
+    if (state.elementInfo) parts.push('1 element');
+    const summary = parts.length > 0 ? parts.join(', ') : 'no captures';
+    setStatus('Report: ' + summary + ' \u2192 Downloading...');
+
     buildAndDownloadReport();
   });
 });
+
+function parseUserAgent(ua) {
+  let os = 'Unknown';
+  if (ua.includes('Mac OS X')) os = 'macOS';
+  else if (ua.includes('Windows')) os = 'Windows';
+  else if (ua.includes('Linux')) os = 'Linux';
+  else if (ua.includes('Android')) os = 'Android';
+  else if (ua.includes('iPhone') || ua.includes('iPad')) os = 'iOS';
+
+  let browser = 'Unknown';
+  const chromeMatch = ua.match(/Chrome\/([\d.]+)/);
+  const firefoxMatch = ua.match(/Firefox\/([\d.]+)/);
+  const safariMatch = ua.match(/Version\/([\d.]+).*Safari/);
+  const edgeMatch = ua.match(/Edg\/([\d.]+)/);
+  if (edgeMatch) browser = 'Edge ' + edgeMatch[1];
+  else if (chromeMatch) browser = 'Chrome ' + chromeMatch[1];
+  else if (firefoxMatch) browser = 'Firefox ' + firefoxMatch[1];
+  else if (safariMatch) browser = 'Safari ' + safariMatch[1];
+
+  return { os, browser };
+}
+
+function getEnvironmentInfo() {
+  const ua = navigator.userAgent;
+  const parsed = parseUserAgent(ua);
+  const screenW = window.screen.width;
+  const screenH = window.screen.height;
+  const vpW = window.innerWidth;
+  const vpH = window.innerHeight;
+
+  return {
+    resolution: screenW + 'x' + screenH + ' (viewport: ' + vpW + 'x' + vpH + ')',
+    devicePixelRatio: window.devicePixelRatio || 1,
+    os: parsed.os,
+    browser: parsed.browser,
+    language: navigator.language || 'Unknown',
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Unknown',
+    touch: ('ontouchstart' in window || navigator.maxTouchPoints > 0) ? 'Yes' : 'No'
+  };
+}
 
 function buildAndDownloadReport() {
   const now = new Date();
   const dateStr = now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
 
   const description = els.description.value.trim() || '(No description provided)';
+  const steps = els.steps.value.trim();
   const category = els.category.value;
   const priority = els.priority.value;
 
@@ -380,11 +544,12 @@ function buildAndDownloadReport() {
   const url = state.tabInfo ? state.tabInfo.url : '(Unknown)';
   const title = state.tabInfo ? state.tabInfo.title : '(Unknown)';
   const userAgent = navigator.userAgent;
+  const environment = getEnvironmentInfo();
 
   const ctx = {
-    now, dateStr, description, category, priority,
+    now, dateStr, description, steps, category, priority,
     categoryLabels, priorityLabels, priorityColors,
-    url, title, userAgent
+    url, title, userAgent, environment
   };
 
   // Build Claude-friendly Markdown report
@@ -421,9 +586,9 @@ function downloadFile(filename, content, mimeType) {
  */
 function buildReportMarkdown(ctx) {
   const {
-    now, dateStr, description, category, priority,
+    now, dateStr, description, steps, category, priority,
     categoryLabels, priorityLabels,
-    url, title, userAgent
+    url, title, userAgent, environment
   } = ctx;
 
   const lines = [];
@@ -438,11 +603,33 @@ function buildReportMarkdown(ctx) {
   lines.push(`**Browser:** ${userAgent}`);
   lines.push('');
 
+  // Environment
+  if (environment) {
+    lines.push('## Environment');
+    lines.push('');
+    lines.push(`- **Resolution:** ${environment.resolution}`);
+    lines.push(`- **Device Pixel Ratio:** ${environment.devicePixelRatio}`);
+    lines.push(`- **OS:** ${environment.os}`);
+    lines.push(`- **Browser:** ${environment.browser}`);
+    lines.push(`- **Language:** ${environment.language}`);
+    lines.push(`- **Timezone:** ${environment.timezone}`);
+    lines.push(`- **Touch:** ${environment.touch}`);
+    lines.push('');
+  }
+
   // Description
   lines.push('## Description');
   lines.push('');
   lines.push(description);
   lines.push('');
+
+  // Steps to Reproduce
+  if (steps) {
+    lines.push('## Steps to Reproduce');
+    lines.push('');
+    lines.push(steps);
+    lines.push('');
+  }
 
   // Screenshot — saved as separate file, referenced by filename
   if (state.screenshot) {
@@ -545,6 +732,11 @@ function buildReportMarkdown(ctx) {
 
   return lines.join('\n');
 }
+
+// ============================================================================
+// Dynamic version from manifest
+// ============================================================================
+document.querySelector('.header-version').textContent = 'v' + chrome.runtime.getManifest().version;
 
 // ============================================================================
 // Restore persisted data on popup open (CRIT-2 + update banner)
