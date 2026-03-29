@@ -28,6 +28,25 @@ const state = {
   navigationHistory: null  // P2-16: SPA route history
 };
 
+/**
+ * Persist the entire capture state to chrome.storage.local under one key.
+ * Call after every state mutation so data survives popup close/reopen.
+ */
+function persistState() {
+  chrome.storage.local.set({
+    bugjarState: {
+      screenshots: state.screenshots,
+      consoleLogs: state.consoleLogs,
+      networkLogs: state.networkLogs,
+      elementInfo: state.elementInfo,
+      tabInfo: state.tabInfo,
+      frameworkInfo: state.frameworkInfo,
+      storageInfo: state.storageInfo,
+      navigationHistory: state.navigationHistory,
+    }
+  });
+}
+
 // ============================================================================
 // DOM references
 // ============================================================================
@@ -213,6 +232,7 @@ els.btnScreenshot.addEventListener('click', async () => {
         // Even without annotation, we still have the raw screenshot — P3-19: push to array
         if (state.screenshots.length >= MAX_SCREENSHOTS) state.screenshots.shift();
         state.screenshots.push(dataUrl);
+        persistState();
         markCaptured(els.btnScreenshot);
         showScreenshotPreview();
         updatePreviewBadges();
@@ -276,12 +296,13 @@ els.btnElement.addEventListener('click', async () => {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'elementSelected') {
     state.elementInfo = message.elementInfo;
+    persistState();
     markCaptured(els.btnElement);
     showElementPreview(state.elementInfo);
     updatePreviewBadges();
     setStatus('Element captured', 'success');
 
-    // Persist to storage so it survives popup re-open
+    // Persist to storage so it survives popup re-open (backward compat with content.js)
     chrome.storage.local.set({ capturedElement: state.elementInfo });
   }
 });
@@ -345,6 +366,7 @@ els.btnConsole.addEventListener('click', async () => {
 
     if (response && response.success) {
       state.consoleLogs = response.logs;
+      persistState();
       markCaptured(els.btnConsole);
       updatePreviewBadges();
       setStatus(`Captured ${response.logs.length} console messages`, 'success');
@@ -377,6 +399,7 @@ els.btnNetwork.addEventListener('click', async () => {
 
     if (response && response.success) {
       state.networkLogs = response.logs;
+      persistState();
       markCaptured(els.btnNetwork);
       updatePreviewBadges();
       setStatus(`Captured ${response.logs.length} network requests`, 'success');
@@ -399,6 +422,7 @@ els.btnCaptureAll.addEventListener('click', async () => {
       if (response && response.success) {
         if (state.screenshots.length >= MAX_SCREENSHOTS) state.screenshots.shift();
         state.screenshots.push(response.dataUrl);
+        persistState();
         markCaptured(els.btnScreenshot);
         showScreenshotPreview();
         updatePreviewBadges();
@@ -420,6 +444,7 @@ els.btnCaptureAll.addEventListener('click', async () => {
       chrome.tabs.sendMessage(tabId, { action: 'getConsoleLogs' }, (response) => {
         if (response && response.success) {
           state.consoleLogs = response.logs;
+          persistState();
           markCaptured(els.btnConsole);
           updatePreviewBadges();
         }
@@ -433,6 +458,7 @@ els.btnCaptureAll.addEventListener('click', async () => {
       chrome.tabs.sendMessage(tabId, { action: 'getNetworkLogs' }, (response) => {
         if (response && response.success) {
           state.networkLogs = response.logs;
+          persistState();
           markCaptured(els.btnNetwork);
           updatePreviewBadges();
         }
@@ -446,6 +472,7 @@ els.btnCaptureAll.addEventListener('click', async () => {
       chrome.tabs.sendMessage(tabId, { action: 'getFrameworkInfo' }, (response) => {
         if (response && response.success) {
           state.frameworkInfo = response.framework;
+          persistState();
         }
         resolve();
       });
@@ -457,6 +484,7 @@ els.btnCaptureAll.addEventListener('click', async () => {
       chrome.tabs.sendMessage(tabId, { action: 'getStorageInfo' }, (response) => {
         if (response && response.success) {
           state.storageInfo = response.storage;
+          persistState();
         }
         resolve();
       });
@@ -468,6 +496,7 @@ els.btnCaptureAll.addEventListener('click', async () => {
       chrome.tabs.sendMessage(tabId, { action: 'getNavigationHistory' }, (response) => {
         if (response && response.success) {
           state.navigationHistory = response.history;
+          persistState();
         }
         resolve();
       });
@@ -477,7 +506,10 @@ els.btnCaptureAll.addEventListener('click', async () => {
   // Also grab tab info
   await new Promise((resolve) => {
     chrome.runtime.sendMessage({ action: 'getActiveTabInfo' }, (res) => {
-      if (res && res.success) state.tabInfo = res.tabInfo;
+      if (res && res.success) {
+        state.tabInfo = res.tabInfo;
+        persistState();
+      }
       resolve();
     });
   });
@@ -501,7 +533,7 @@ els.btnClear.addEventListener('click', () => {
   state.navigationHistory = null;
 
   // Clear storage
-  chrome.storage.local.remove(['annotatedScreenshot', 'capturedElement', 'bugjarForm']);
+  chrome.storage.local.remove(['annotatedScreenshot', 'capturedElement', 'bugjarForm', 'bugjarState']);
 
   // Reset captured badges on buttons
   [els.btnScreenshot, els.btnElement, els.btnConsole, els.btnNetwork].forEach(btn => {
@@ -680,7 +712,7 @@ function buildAndDownloadReport() {
   state.navigationHistory = null;
 
   // Clear chrome.storage.local
-  chrome.storage.local.remove(['annotatedScreenshot', 'capturedElement', 'bugjarForm']);
+  chrome.storage.local.remove(['annotatedScreenshot', 'capturedElement', 'bugjarForm', 'bugjarState']);
 
   // Clear UI
   els.description.value = '';
@@ -967,7 +999,7 @@ els.priority.addEventListener('change', saveFormFields);
 // ============================================================================
 // Restore persisted data on popup open (CRIT-2 + update banner)
 // ============================================================================
-chrome.storage.local.get(['annotatedScreenshot', 'capturedElement', 'updateAvailable', 'bugjarLang', 'helpDismissed', 'bugjarForm'], (stored) => {
+chrome.storage.local.get(['annotatedScreenshot', 'capturedElement', 'updateAvailable', 'bugjarLang', 'helpDismissed', 'bugjarForm', 'bugjarState'], (stored) => {
   // Restore form fields
   if (stored.bugjarForm) {
     if (stored.bugjarForm.description) els.description.value = stored.bugjarForm.description;
@@ -976,20 +1008,41 @@ chrome.storage.local.get(['annotatedScreenshot', 'capturedElement', 'updateAvail
     if (stored.bugjarForm.priority) els.priority.value = stored.bugjarForm.priority;
   }
 
+  // Restore full capture state from unified key
+  if (stored.bugjarState) {
+    const s = stored.bugjarState;
+    if (s.screenshots && s.screenshots.length) { state.screenshots = s.screenshots; markCaptured(els.btnScreenshot); showScreenshotPreview(); }
+    if (s.consoleLogs) { state.consoleLogs = s.consoleLogs; markCaptured(els.btnConsole); }
+    if (s.networkLogs) { state.networkLogs = s.networkLogs; markCaptured(els.btnNetwork); }
+    if (s.elementInfo) { state.elementInfo = s.elementInfo; markCaptured(els.btnElement); showElementPreview(s.elementInfo); }
+    if (s.tabInfo) { state.tabInfo = s.tabInfo; }
+    if (s.frameworkInfo) { state.frameworkInfo = s.frameworkInfo; }
+    if (s.storageInfo) { state.storageInfo = s.storageInfo; }
+    if (s.navigationHistory) { state.navigationHistory = s.navigationHistory; }
+    updatePreviewBadges();
+  }
+
+  // BUG 10 fix: consume annotatedScreenshot from annotation editor, merge into bugjarState
   if (stored.annotatedScreenshot) {
-    // P3-19: push to screenshots array
     if (state.screenshots.length >= MAX_SCREENSHOTS) state.screenshots.shift();
     state.screenshots.push(stored.annotatedScreenshot);
+    chrome.storage.local.remove('annotatedScreenshot'); // consume it — prevent duplicate on next open
+    persistState();
     markCaptured(els.btnScreenshot);
     showScreenshotPreview();
     updatePreviewBadges();
   }
+
+  // Backward compat: content.js writes capturedElement directly — import into bugjarState
   if (stored.capturedElement) {
     state.elementInfo = stored.capturedElement;
+    chrome.storage.local.remove('capturedElement'); // consume it
+    persistState();
     markCaptured(els.btnElement);
     showElementPreview(state.elementInfo);
     updatePreviewBadges();
   }
+
   if (stored.updateAvailable) {
     const banner = document.createElement('div');
     banner.className = 'update-banner';
