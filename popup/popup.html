@@ -11,7 +11,7 @@
   <div class="header">
     <span class="header-logo">🐞</span>
     <h1>BugJar</h1>
-    <span class="header-version">v1.1.0</span>
+    <span class="header-version">v2.0.1</span>
     <!-- P3-20: Language selector -->
     <div class="lang-selector">
       <button class="lang-btn active" data-lang="en" title="English">EN</button>
@@ -65,6 +65,26 @@
       <p><kbd>Ctrl+Shift+J</kbd> <span data-i18n="helpShortcutCapture">Quick capture all</span></p>
     </div>
     <button class="help-dismiss" id="btn-help-dismiss" data-i18n="helpDismiss">Got it!</button>
+  </div>
+
+  <!-- Tabs -->
+  <div class="popup-tabs">
+    <button class="popup-tab active" id="tab-report" data-i18n="tabReport">Report</button>
+    <button class="popup-tab" id="tab-history" data-i18n="tabHistory">History</button>
+  </div>
+
+  <!-- History panel (hidden by default) -->
+  <div class="history-panel" id="history-panel" style="display:none;">
+    <div class="history-toolbar">
+      <span class="history-count" id="history-count">0 reports</span>
+      <button class="history-clear-all" id="btn-clear-history" data-i18n="clearHistory">Clear All</button>
+    </div>
+    <div class="history-list" id="history-list">
+      <!-- Dynamically populated -->
+    </div>
+    <div class="history-empty" id="history-empty">
+      No reports yet
+    </div>
   </div>
 
   <!-- Main content -->

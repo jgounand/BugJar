@@ -649,14 +649,63 @@ function buildAndDownloadReport() {
 
   // Build Claude-friendly Markdown report
   const reportMD = buildReportMarkdown(ctx);
-  downloadFile(`feedback-${dateStr}.md`, reportMD, 'text/markdown');
+  const filename = `feedback-${dateStr}.md`;
+  downloadFile(filename, reportMD, 'text/markdown');
 
-  setStatus('Report downloaded (.md for Claude)', 'success');
+  // Save to history
+  const consoleErrorCount = state.consoleLogs ? state.consoleLogs.filter(l => l.level === 'error').length : 0;
+  const networkFailCount = state.networkLogs ? state.networkLogs.filter(r => r.status >= 400 || r.status === 0).length : 0;
+  const metadata = {
+    id: Date.now(),
+    date: now.toISOString(),
+    url: url,
+    title: title,
+    category: category,
+    priority: priority,
+    description: description.substring(0, 100),
+    filename: filename,
+    hasScreenshot: state.screenshots.length > 0,
+    consoleErrorCount: consoleErrorCount,
+    networkFailCount: networkFailCount
+  };
+  saveToHistory(metadata);
+
+  // Auto-clear state after report generation
+  state.screenshots = [];
+  state.consoleLogs = null;
+  state.networkLogs = null;
+  state.elementInfo = null;
+  state.frameworkInfo = null;
+  state.storageInfo = null;
+  state.navigationHistory = null;
+
+  // Clear chrome.storage.local
+  chrome.storage.local.remove(['annotatedScreenshot', 'capturedElement']);
+
+  // Clear UI
+  els.description.value = '';
+  els.steps.value = '';
+  els.category.value = 'bug';
+  els.priority.value = 'medium';
+
+  // Hide previews, remove captured badges
+  els.screenshotPreview.classList.remove('visible');
+  els.screenshotImg.src = '';
+  els.elementPreview.classList.remove('visible');
+  els.elementPreview.replaceChildren();
+  els.capturedPreview.replaceChildren();
+  els.capturedPreview.classList.remove('has-data');
+  [els.btnScreenshot, els.btnElement, els.btnConsole, els.btnNetwork].forEach(btn => {
+    btn.classList.remove('captured');
+  });
+
+  setStatus(t('reportCleared'), 'success');
 }
 
 function dataUrlToBlob(dataUrl) {
   const parts = dataUrl.split(',');
-  const mime = parts[0].match(/:(.*?);/)[1];
+  const mimeMatch = parts[0].match(/:(.*?);/);
+  const mime = mimeMatch ? mimeMatch[1] : 'image/png';
   const binary = atob(parts[1]);
   const array = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) array[i] = binary.charCodeAt(i);
@@ -955,5 +1004,120 @@ document.getElementById('btn-help').addEventListener('click', () => {
 document.getElementById('btn-help-dismiss').addEventListener('click', () => {
   document.getElementById('help-panel').classList.remove('visible');
   chrome.storage.local.set({ helpDismissed: true });
+});
+
+// ============================================================================
+// Tab switching (Report / History)
+// ============================================================================
+document.getElementById('tab-report').addEventListener('click', () => {
+  document.getElementById('tab-report').classList.add('active');
+  document.getElementById('tab-history').classList.remove('active');
+  document.querySelector('.content').style.display = 'flex';
+  document.getElementById('history-panel').style.display = 'none';
+});
+
+document.getElementById('tab-history').addEventListener('click', () => {
+  document.getElementById('tab-history').classList.add('active');
+  document.getElementById('tab-report').classList.remove('active');
+  document.querySelector('.content').style.display = 'none';
+  document.getElementById('history-panel').style.display = 'block';
+  loadHistory();
+});
+
+// ============================================================================
+// History functions
+// ============================================================================
+async function saveToHistory(metadata) {
+  const stored = await chrome.storage.local.get('reportHistory');
+  const history = stored.reportHistory || [];
+  history.unshift(metadata); // newest first
+  if (history.length > 50) history.pop();
+  await chrome.storage.local.set({ reportHistory: history });
+}
+
+async function loadHistory() {
+  const stored = await chrome.storage.local.get('reportHistory');
+  const history = stored.reportHistory || [];
+  renderHistory(history);
+}
+
+function renderHistory(history) {
+  const list = document.getElementById('history-list');
+  const empty = document.getElementById('history-empty');
+  const count = document.getElementById('history-count');
+
+  list.replaceChildren(); // clear
+  count.textContent = history.length + ' report' + (history.length !== 1 ? 's' : '');
+
+  if (history.length === 0) {
+    empty.style.display = 'block';
+    list.style.display = 'none';
+    return;
+  }
+
+  empty.style.display = 'none';
+  list.style.display = 'block';
+
+  for (const item of history) {
+    const itemEl = createElement('div', { className: 'history-item' });
+
+    // Header row: date + badges + delete button
+    const header = createElement('div', { className: 'history-item-header' });
+
+    const dateText = new Date(item.date).toLocaleDateString(undefined, {
+      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+    });
+    header.appendChild(createElement('span', { className: 'history-date', textContent: dateText }));
+
+    const badges = createElement('span', { className: 'history-badges' });
+    if (item.priority) {
+      badges.appendChild(createElement('span', {
+        className: 'badge-priority ' + item.priority,
+        textContent: item.priority.charAt(0).toUpperCase() + item.priority.slice(1)
+      }));
+    }
+    if (item.category) {
+      badges.appendChild(createElement('span', {
+        className: 'badge-category',
+        textContent: item.category.charAt(0).toUpperCase() + item.category.slice(1)
+      }));
+    }
+    header.appendChild(badges);
+
+    const deleteBtn = createElement('button', { className: 'history-delete', title: 'Delete', textContent: '\u00d7' });
+    const itemId = item.id;
+    deleteBtn.addEventListener('click', () => { deleteHistoryItem(itemId); });
+    header.appendChild(deleteBtn);
+
+    itemEl.appendChild(header);
+
+    // URL
+    if (item.url) {
+      itemEl.appendChild(createElement('div', { className: 'history-url', textContent: item.url }));
+    }
+
+    // Description
+    if (item.description) {
+      itemEl.appendChild(createElement('div', { className: 'history-description', textContent: item.description }));
+    }
+
+    list.appendChild(itemEl);
+  }
+}
+
+async function deleteHistoryItem(id) {
+  const stored = await chrome.storage.local.get('reportHistory');
+  const history = (stored.reportHistory || []).filter(h => h.id !== id);
+  await chrome.storage.local.set({ reportHistory: history });
+  renderHistory(history);
+}
+
+async function clearAllHistory() {
+  await chrome.storage.local.set({ reportHistory: [] });
+  renderHistory([]);
+}
+
+document.getElementById('btn-clear-history').addEventListener('click', () => {
+  clearAllHistory();
 });
 

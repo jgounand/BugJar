@@ -53,6 +53,10 @@
     --status-border: #333355;
     --scrollbar: #444466;
   }
+
+  select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' fill='none' stroke='%23a0a0a0' stroke-width='1.5'/%3E%3C/svg%3E");
+  }
 }
 
 * {
@@ -136,6 +140,148 @@ body {
 
 .update-banner a:hover {
   text-decoration: underline;
+}
+
+/* -- Popup tabs ------------------------------------------------------------ */
+.popup-tabs {
+  display: flex;
+  border-bottom: 2px solid var(--border);
+  background: var(--bg);
+}
+
+.popup-tab {
+  flex: 1;
+  padding: 8px;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: 13px system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-weight: 600;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+}
+
+.popup-tab.active {
+  color: #e94560;
+  border-bottom-color: #e94560;
+}
+
+.popup-tab:hover:not(.active) {
+  color: var(--text);
+}
+
+/* -- History panel --------------------------------------------------------- */
+.history-panel {
+  padding: 8px 16px;
+}
+
+.history-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.history-count {
+  font: 12px system-ui, sans-serif;
+  color: var(--text-secondary);
+}
+
+.history-clear-all {
+  background: none;
+  border: 1px solid #e74c3c;
+  color: #e74c3c;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  font-family: inherit;
+}
+
+.history-clear-all:hover {
+  background: #e74c3c;
+  color: #fff;
+}
+
+.history-item {
+  background: var(--bg-secondary);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  border-left: 3px solid var(--border);
+}
+
+.history-item-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.history-date {
+  font: 11px system-ui, sans-serif;
+  color: var(--text-secondary);
+}
+
+.history-badges {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+}
+
+.badge-priority, .badge-category {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
+.badge-priority.critical { background: #e74c3c; color: #fff; }
+.badge-priority.high { background: #e67e22; color: #fff; }
+.badge-priority.medium { background: #f39c12; color: #fff; }
+.badge-priority.low { background: #27ae60; color: #fff; }
+.badge-category { background: var(--border); color: var(--text); }
+
+.history-delete {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.history-delete:hover { color: #e74c3c; }
+
+.history-url {
+  font: 11px monospace;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.history-description {
+  font: 12px system-ui, sans-serif;
+  color: var(--text);
+  margin-top: 4px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.history-empty {
+  text-align: center;
+  padding: 30px;
+  color: var(--text-secondary);
+  font: 13px system-ui, sans-serif;
+}
+
+.history-list {
+  max-height: 400px;
+  overflow-y: auto;
 }
 
 /* -- Content area ---------------------------------------------------------- */

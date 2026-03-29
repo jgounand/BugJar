@@ -344,7 +344,7 @@
         );
         if (siblings.length > 1) {
           const idx = siblings.indexOf(current) + 1;
-          selector += `:nth-child(${idx})`;
+          selector += `:nth-of-type(${idx})`;
         }
       }
       parts.unshift(selector);
@@ -389,8 +389,12 @@
   }
 
   function isInspectorElement(el) {
-    if (!el || !el.id) return false;
-    return el.id.startsWith('__km_feedback_');
+    let node = el;
+    while (node) {
+      if (node.id && node.id.startsWith('__km_feedback_')) return true;
+      node = node.parentElement;
+    }
+    return false;
   }
 
   function onInspectorMouseMove(e) {
@@ -595,6 +599,11 @@
 
       case 'getNavigationHistory':
         sendResponse({ success: true, history: navigationHistory.slice() });
+        break;
+
+      case 'triggerCaptureAll':
+        showToast('Capture All triggered (open BugJar to see results)', 'success');
+        sendResponse({ success: true });
         break;
 
       case 'ping':

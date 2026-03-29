@@ -150,6 +150,7 @@ async function compressScreenshot(dataUrl, quality) {
     const offscreen = new OffscreenCanvas(bitmap.width, bitmap.height);
     const octx = offscreen.getContext('2d');
     octx.drawImage(bitmap, 0, 0);
+    bitmap.close();
     const jpegBlob = await offscreen.convertToBlob({ type: 'image/jpeg', quality });
     // Convert blob back to data URL
     const arrayBuffer = await jpegBlob.arrayBuffer();
