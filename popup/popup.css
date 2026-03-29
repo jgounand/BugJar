@@ -66,7 +66,7 @@
 }
 
 body {
-  width: 380px;
+  width: 440px;
   min-height: 200px;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
     Oxygen, Ubuntu, Cantarell, sans-serif;
@@ -358,183 +358,66 @@ select:focus {
   flex: 1;
 }
 
-/* -- Capture buttons ------------------------------------------------------- */
-.capture-section {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.capture-section label {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-secondary);
+/* -- Steps section --------------------------------------------------------- */
+.steps-section { margin-top: 12px; }
+.steps-section > label {
+  font: 600 12px system-ui;
+  color: var(--text);
+  margin-bottom: 6px;
+  display: block;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-}
-
-/* -- Capture All button ---------------------------------------------------- */
-.capture-all-btn {
-  width: 100%;
-  padding: 10px 12px;
-  border: none;
-  border-radius: 6px;
-  background: var(--accent);
-  color: #fff;
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s;
-  letter-spacing: 0.2px;
-  margin-bottom: 4px;
-}
-
-.capture-all-btn:hover {
-  background: var(--accent-hover);
-}
-
-.capture-all-btn:disabled {
-  background: #ccc;
-  cursor: not-allowed;
-}
-
-.capture-buttons {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.capture-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg-secondary);
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 12px;
-  color: var(--text);
-  transition: all 0.2s;
-}
-
-.capture-btn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: var(--capture-hover-bg);
-}
-
-.capture-btn.captured {
-  border-color: var(--success);
-  background: var(--success-bg);
-  color: var(--success);
-}
-
-.capture-btn.loading {
-  opacity: 0.6;
-  pointer-events: none;
-}
-
-.capture-btn .icon {
-  font-size: 16px;
-  flex-shrink: 0;
-}
-
-.capture-btn.captured .icon::after {
-  content: ' \2713';
-  color: #27ae60;
-}
-
-.capture-btn .label {
-  font-weight: 500;
-}
-
-/* -- Captured data preview ------------------------------------------------- */
-.captured-preview {
-  display: none;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 10px;
-  background: var(--bg-secondary);
-  border-radius: 6px;
-  border: 1px solid var(--border-light);
-}
-
-.captured-preview.has-data {
-  display: flex;
-}
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  border-radius: 12px;
-  font-size: 11px;
-  font-weight: 500;
-  background: var(--badge-bg);
-  color: var(--success);
-  border: 1px solid var(--success-border);
-}
-
-.badge .badge-icon {
-  font-size: 12px;
-}
-
-/* -- Screenshot thumbnail -------------------------------------------------- */
-.screenshot-preview {
-  display: none;
-  border-radius: 6px;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  background: var(--bg-secondary);
-}
-
-.screenshot-preview.visible {
-  display: block;
-}
-
-.screenshot-preview img {
-  width: 100%;
-  height: auto;
-  display: block;
-}
-
-/* -- Element info preview -------------------------------------------------- */
-.element-preview {
-  display: none;
-  padding: 10px;
-  background: var(--bg-secondary);
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
   font-size: 11px;
   color: var(--text-secondary);
-  word-break: break-all;
 }
 
-.element-preview.visible {
-  display: block;
+.steps-list { display: flex; flex-direction: column; gap: 8px; }
+
+.step-card {
+  background: var(--bg-secondary); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px; position: relative;
+}
+.step-card.active { border-color: var(--accent, #e94560); }
+
+.step-header {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;
+}
+.step-number { font: 600 12px system-ui; color: var(--accent, #e94560); }
+.step-delete {
+  background: none; border: none; color: var(--text-secondary);
+  cursor: pointer; font-size: 16px; padding: 0 4px;
+}
+.step-delete:hover { color: #e74c3c; }
+
+.step-description {
+  width: 100%; border: 1px solid var(--border); border-radius: 4px;
+  padding: 6px 8px; font: 12px system-ui; background: var(--input-bg, #fff);
+  color: var(--text); resize: none; margin-bottom: 6px; min-height: 32px;
 }
 
-.element-preview .el-tag {
-  color: var(--accent);
-  font-weight: 600;
+.step-captures {
+  display: flex; gap: 4px; margin-bottom: 6px;
 }
+.step-capture-btn {
+  flex: 1; padding: 4px; border: 1px solid var(--border); border-radius: 4px;
+  background: var(--bg); color: var(--text); cursor: pointer; font-size: 12px;
+  text-align: center; transition: all 0.15s; font-family: inherit;
+}
+.step-capture-btn:hover { border-color: var(--accent); }
+.step-capture-btn.captured { border-color: #27ae60; background: rgba(39,174,96,0.05); }
+.step-capture-btn.loading { opacity: 0.6; pointer-events: none; }
 
-.element-preview .el-id {
-  color: #2980b9;
-}
+.step-summary { font: 11px system-ui; color: var(--text-secondary); }
+.step-summary-item { display: flex; align-items: center; gap: 4px; margin-top: 2px; }
+.step-summary-item .el-tag { color: var(--accent); font-weight: 600; font-family: monospace; font-size: 11px; }
 
-.element-preview .el-class {
-  color: #27ae60;
+.add-step-btn {
+  width: 100%; padding: 8px; border: 2px dashed var(--border);
+  border-radius: 8px; background: none; color: var(--text-secondary);
+  cursor: pointer; font: 13px system-ui; margin-top: 8px;
+  transition: all 0.15s; font-family: inherit;
 }
-
-.element-preview .el-line {
-  margin-top: 4px;
-}
+.add-step-btn:hover { border-color: var(--accent); color: var(--accent); }
 
 /* -- Generate button ------------------------------------------------------- */
 .generate-btn {

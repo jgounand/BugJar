@@ -47,6 +47,12 @@ const TRANSLATIONS = {
     helpShortcutOpen: 'Open BugJar',
     helpShortcutCapture: 'Quick capture all',
     helpDismiss: 'Got it!',
+    // Steps
+    stepsLabel: 'Reproduction Steps',
+    addStep: 'Add Step',
+    stepN: 'Step',
+    captureAllStep: 'All',
+    stepDescription: 'Describe this step...',
     // History tab
     tabReport: 'Report',
     tabHistory: 'History',
@@ -78,6 +84,12 @@ const TRANSLATIONS = {
     priMedium: 'Moyenne',
     priHigh: 'Haute',
     priCritical: 'Critique',
+    // Steps
+    stepsLabel: '\u00c9tapes de reproduction',
+    addStep: 'Ajouter une \u00e9tape',
+    stepN: '\u00c9tape',
+    captureAllStep: 'Tout',
+    stepDescription: 'D\u00e9crivez cette \u00e9tape...',
     // Help panel
     helpStep1Title: 'Naviguez vers le bug',
     helpStep1Desc: 'Allez sur la page o\u00f9 vous voyez le probl\u00e8me',
@@ -124,6 +136,12 @@ const TRANSLATIONS = {
     priMedium: 'Media',
     priHigh: 'Alta',
     priCritical: 'Cr\u00edtica',
+    // Steps
+    stepsLabel: 'Pasos de reproducci\u00f3n',
+    addStep: 'Agregar paso',
+    stepN: 'Paso',
+    captureAllStep: 'Todo',
+    stepDescription: 'Describe este paso...',
     // Help panel
     helpStep1Title: 'Navega al bug',
     helpStep1Desc: 'Ve a la p\u00e1gina donde ves el problema',

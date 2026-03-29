@@ -1,31 +1,34 @@
 /**
- * BugJar — Popup Logic (popup.js)
+ * BugJar -- Popup Logic (popup.js)
  *
- * Orchestrates the capture workflow:
+ * Orchestrates the step-based capture workflow:
+ *  - Each reproduction step has its own captures (screenshots, elements, console, network)
  *  - Screenshot capture + annotation
  *  - Console log retrieval
  *  - Network log retrieval
  *  - DOM element selection
  *  - Report generation
  *
- * SECURITY NOTE: All dynamic content is escaped via escapeHtml() before
- * insertion. The data displayed originates from the user's own browser
- * session and never from untrusted external sources.
+ * SECURITY NOTE: All dynamic content is built via createElement/textContent.
+ * No innerHTML is used anywhere.
  */
 
 // ============================================================================
 // State
 // ============================================================================
-const MAX_SCREENSHOTS = 5;
+const MAX_SCREENSHOTS_PER_STEP = 5;
+const MAX_STEPS = 10;
+
 const state = {
-  screenshots: [],         // array of data URLs (annotated or raw) — P3-19
-  consoleLogs: null,       // array of log entries
-  networkLogs: null,       // array of network entries
-  elementInfo: null,       // selected element details
-  tabInfo: null,           // active tab URL/title
-  frameworkInfo: null,     // P2-13: detected framework
-  storageInfo: null,       // P2-15: localStorage/sessionStorage keys
-  navigationHistory: null  // P2-16: SPA route history
+  description: '',
+  category: 'bug',
+  priority: 'medium',
+  currentStepId: null,
+  steps: [],
+  tabInfo: null,
+  frameworkInfo: null,
+  storageInfo: null,
+  navigationHistory: null
 };
 
 /**
@@ -35,14 +38,12 @@ const state = {
 function persistState() {
   chrome.storage.local.set({
     bugjarState: {
-      screenshots: state.screenshots,
-      consoleLogs: state.consoleLogs,
-      networkLogs: state.networkLogs,
-      elementInfo: state.elementInfo,
+      currentStepId: state.currentStepId,
+      steps: state.steps,
       tabInfo: state.tabInfo,
       frameworkInfo: state.frameworkInfo,
       storageInfo: state.storageInfo,
-      navigationHistory: state.navigationHistory,
+      navigationHistory: state.navigationHistory
     }
   });
 }
@@ -52,44 +53,29 @@ function persistState() {
 // ============================================================================
 const els = {
   description: document.getElementById('description'),
-  steps: document.getElementById('steps'),
   category: document.getElementById('category'),
   priority: document.getElementById('priority'),
-  btnScreenshot: document.getElementById('btn-screenshot'),
-  btnElement: document.getElementById('btn-element'),
-  btnConsole: document.getElementById('btn-console'),
-  btnNetwork: document.getElementById('btn-network'),
-  btnCaptureAll: document.getElementById('btn-capture-all'),
   btnClear: document.getElementById('btn-clear'),
   btnGenerate: document.getElementById('btn-generate'),
-  capturedPreview: document.getElementById('captured-preview'),
-  screenshotPreview: document.getElementById('screenshot-preview'),
-  screenshotImg: document.getElementById('screenshot-img'),
-  elementPreview: document.getElementById('element-preview'),
+  btnAddStep: document.getElementById('btn-add-step'),
+  stepsList: document.getElementById('steps-list'),
   statusBar: document.getElementById('status-bar')
 };
 
 // ============================================================================
 // Helpers
 // ============================================================================
-function setStatus(text, type = '') {
+function setStatus(text, type) {
+  if (type === undefined) type = '';
   els.statusBar.textContent = text;
   els.statusBar.className = 'status-bar' + (type ? ' ' + type : '');
   if (type === 'success') {
     clearTimeout(setStatus._timer);
-    setStatus._timer = setTimeout(() => {
+    setStatus._timer = setTimeout(function () {
       els.statusBar.textContent = 'Ready';
       els.statusBar.className = 'status-bar';
     }, 4000);
   }
-}
-
-function markCaptured(btn) {
-  btn.classList.add('captured');
-}
-
-function setLoading(btn, loading) {
-  btn.classList.toggle('loading', loading);
 }
 
 function escapeHtml(str) {
@@ -104,12 +90,18 @@ function escapeHtml(str) {
 
 /**
  * Safe DOM builder: creates an element, sets attributes and text, appends children.
- * Used to avoid raw innerHTML where practical.
  */
-function createElement(tag, attrs, ...children) {
-  const el = document.createElement(tag);
+function createElement(tag, attrs) {
+  var children = [];
+  for (var i = 2; i < arguments.length; i++) {
+    children.push(arguments[i]);
+  }
+  var el = document.createElement(tag);
   if (attrs) {
-    for (const [key, value] of Object.entries(attrs)) {
+    var keys = Object.keys(attrs);
+    for (var k = 0; k < keys.length; k++) {
+      var key = keys[k];
+      var value = attrs[key];
       if (key === 'textContent') {
         el.textContent = value;
       } else if (key === 'style' && typeof value === 'object') {
@@ -121,7 +113,8 @@ function createElement(tag, attrs, ...children) {
       }
     }
   }
-  for (const child of children) {
+  for (var c = 0; c < children.length; c++) {
+    var child = children[c];
     if (typeof child === 'string') {
       el.appendChild(document.createTextNode(child));
     } else if (child) {
@@ -131,64 +124,45 @@ function createElement(tag, attrs, ...children) {
   return el;
 }
 
-function updatePreviewBadges() {
-  const badges = [];
-  if (state.screenshots.length > 0) badges.push({ icon: '\u{1F4F8}', text: state.screenshots.length === 1 ? 'Screenshot' : `${state.screenshots.length} screenshots` });
-  if (state.elementInfo) badges.push({ icon: '\u{1F5B1}\uFE0F', text: 'Element' });
-  if (state.consoleLogs) badges.push({ icon: '\u{1F4CB}', text: `Console (${state.consoleLogs.length})` });
-  if (state.networkLogs) badges.push({ icon: '\u{1F310}', text: `Network (${state.networkLogs.length})` });
-
-  // Build badges safely using DOM API
-  els.capturedPreview.replaceChildren();
-  for (const b of badges) {
-    const badge = createElement('span', { className: 'badge' },
-      createElement('span', { className: 'badge-icon', textContent: b.icon }),
-      b.text
-    );
-    els.capturedPreview.appendChild(badge);
-  }
-
-  els.capturedPreview.classList.toggle('has-data', badges.length > 0);
-}
-
 /**
  * Ensure content script is injected into the active tab.
  * Returns the tab ID on success, or null.
  */
 async function ensureContentScript() {
-  const [tab] = await new Promise((resolve) => {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => resolve(tabs || []));
+  var tabs = await new Promise(function (resolve) {
+    chrome.tabs.query({ active: true, currentWindow: true }, function (t) { resolve(t || []); });
   });
+  var tab = tabs[0];
 
   if (!tab) {
     setStatus('No active tab found', 'error');
     return null;
   }
 
-  const tabId = tab.id;
+  var tabId = tab.id;
 
   // Try ping first (already injected?)
-  const alreadyReady = await new Promise((resolve) => {
-    chrome.tabs.sendMessage(tabId, { action: 'ping' }, (r) => {
+  var alreadyReady = await new Promise(function (resolve) {
+    chrome.tabs.sendMessage(tabId, { action: 'ping' }, function (r) {
       resolve(!chrome.runtime.lastError && r && r.injected);
     });
   });
   if (alreadyReady) return tabId;
 
   // Inject
-  const res = await new Promise((resolve) => {
-    chrome.runtime.sendMessage({ action: 'injectContentScript', tabId }, resolve);
+  var res = await new Promise(function (resolve) {
+    chrome.runtime.sendMessage({ action: 'injectContentScript', tabId: tabId }, resolve);
   });
   if (!res || !res.success) {
-    setStatus(`Cannot inject: ${(res && res.error) || 'Restricted page'}`, 'error');
+    setStatus('Cannot inject: ' + ((res && res.error) || 'Restricted page'), 'error');
     return null;
   }
 
   // Wait for ready with retries
-  for (let i = 0; i < 15; i++) {
-    await new Promise((r) => setTimeout(r, 100));
-    const ready = await new Promise((resolve) => {
-      chrome.tabs.sendMessage(tabId, { action: 'ping' }, (r) => {
+  for (var i = 0; i < 15; i++) {
+    await new Promise(function (r) { setTimeout(r, 100); });
+    var ready = await new Promise(function (resolve) {
+      chrome.tabs.sendMessage(tabId, { action: 'ping' }, function (r) {
         resolve(!chrome.runtime.lastError && r && r.injected);
       });
     });
@@ -200,276 +174,394 @@ async function ensureContentScript() {
 }
 
 // ============================================================================
-// Screenshot capture
+// Step management
 // ============================================================================
-els.btnScreenshot.addEventListener('click', async () => {
-  setLoading(els.btnScreenshot, true);
+function createStep() {
+  if (state.steps.length >= MAX_STEPS) {
+    setStatus('Maximum ' + MAX_STEPS + ' steps reached', 'error');
+    return null;
+  }
+  var step = {
+    id: Date.now(),
+    description: '',
+    elements: [],
+    screenshots: [],
+    consoleLogs: null,
+    networkLogs: null,
+    timestamp: new Date().toISOString()
+  };
+  state.steps.push(step);
+  state.currentStepId = step.id;
+  renderSteps();
+  persistState();
+  return step;
+}
+
+function deleteStep(stepId) {
+  state.steps = state.steps.filter(function (s) { return s.id !== stepId; });
+  if (state.currentStepId === stepId) {
+    state.currentStepId = state.steps.length > 0 ? state.steps[state.steps.length - 1].id : null;
+  }
+  renderSteps();
+  persistState();
+}
+
+function getCurrentStep() {
+  for (var i = 0; i < state.steps.length; i++) {
+    if (state.steps[i].id === state.currentStepId) return state.steps[i];
+  }
+  return null;
+}
+
+function getStepById(stepId) {
+  for (var i = 0; i < state.steps.length; i++) {
+    if (state.steps[i].id === stepId) return state.steps[i];
+  }
+  return null;
+}
+
+// ============================================================================
+// Render steps
+// ============================================================================
+function renderSteps() {
+  els.stepsList.replaceChildren();
+
+  for (var idx = 0; idx < state.steps.length; idx++) {
+    var step = state.steps[idx];
+    var stepNum = idx + 1;
+    var isActive = step.id === state.currentStepId;
+
+    var card = document.createElement('div');
+    card.className = 'step-card' + (isActive ? ' active' : '');
+
+    // Header: "Step N" + delete button
+    var header = document.createElement('div');
+    header.className = 'step-header';
+
+    var numberSpan = document.createElement('span');
+    numberSpan.className = 'step-number';
+    // Hide number if only 1 step (simpler UX for quick bugs)
+    if (state.steps.length > 1) {
+      numberSpan.textContent = t('stepN') + ' ' + stepNum;
+    } else {
+      numberSpan.textContent = t('stepsLabel');
+    }
+    header.appendChild(numberSpan);
+
+    // Only show delete button if more than 1 step
+    if (state.steps.length > 1) {
+      var deleteBtn = document.createElement('button');
+      deleteBtn.className = 'step-delete';
+      deleteBtn.textContent = '\u00d7';
+      deleteBtn.title = 'Delete step';
+      (function (sid) {
+        deleteBtn.addEventListener('click', function () { deleteStep(sid); });
+      })(step.id);
+      header.appendChild(deleteBtn);
+    }
+
+    card.appendChild(header);
+
+    // Description input
+    var descInput = document.createElement('textarea');
+    descInput.className = 'step-description';
+    descInput.placeholder = t('stepDescription');
+    descInput.value = step.description;
+    descInput.rows = 1;
+    (function (sid) {
+      descInput.addEventListener('input', function (e) {
+        var s = getStepById(sid);
+        if (s) {
+          s.description = e.target.value;
+          persistState();
+        }
+      });
+      descInput.addEventListener('focus', function () {
+        state.currentStepId = sid;
+        renderSteps();
+      });
+    })(step.id);
+    card.appendChild(descInput);
+
+    // Capture buttons row
+    var captures = document.createElement('div');
+    captures.className = 'step-captures';
+
+    var captureItems = [
+      { icon: '\uD83D\uDCF8', action: 'screenshot', stepId: step.id, hasCap: step.screenshots.length > 0 },
+      { icon: '\uD83D\uDDB1\uFE0F', action: 'element', stepId: step.id, hasCap: step.elements.length > 0 },
+      { icon: '\uD83D\uDCCB', action: 'console', stepId: step.id, hasCap: step.consoleLogs !== null },
+      { icon: '\uD83C\uDF10', action: 'network', stepId: step.id, hasCap: step.networkLogs !== null },
+      { icon: '\u26A1', action: 'captureAll', stepId: step.id, label: t('captureAllStep') }
+    ];
+
+    for (var ci = 0; ci < captureItems.length; ci++) {
+      var item = captureItems[ci];
+      var btn = document.createElement('button');
+      btn.className = 'step-capture-btn' + (item.hasCap ? ' captured' : '');
+      btn.textContent = item.icon + (item.label ? ' ' + item.label : '');
+      btn.title = item.action;
+      (function (act, sid) {
+        btn.addEventListener('click', function () {
+          state.currentStepId = sid;
+          handleStepCapture(act, sid);
+        });
+      })(item.action, item.stepId);
+      captures.appendChild(btn);
+    }
+
+    card.appendChild(captures);
+
+    // Captured items summary
+    var summary = document.createElement('div');
+    summary.className = 'step-summary';
+    var hasSummary = false;
+
+    // Elements list
+    if (step.elements.length > 0) {
+      for (var ei = 0; ei < step.elements.length; ei++) {
+        var elInfo = step.elements[ei];
+        var elItem = document.createElement('div');
+        elItem.className = 'step-summary-item';
+
+        var elIcon = document.createElement('span');
+        elIcon.textContent = '\uD83D\uDDB1\uFE0F ';
+        elItem.appendChild(elIcon);
+
+        var elTag = document.createElement('span');
+        elTag.className = 'el-tag';
+        var elLabel = elInfo.tagName;
+        if (elInfo.classes && elInfo.classes.length) {
+          elLabel += '.' + elInfo.classes.slice(0, 2).join('.');
+        }
+        elTag.textContent = elLabel;
+        elItem.appendChild(elTag);
+
+        summary.appendChild(elItem);
+      }
+      hasSummary = true;
+    }
+
+    // Console + network badges on same line
+    var badgeLine = document.createElement('div');
+    badgeLine.className = 'step-summary-item';
+    var hasBadge = false;
+
+    if (step.consoleLogs !== null) {
+      var errCount = 0;
+      for (var cl = 0; cl < step.consoleLogs.length; cl++) {
+        if (step.consoleLogs[cl].level === 'error') errCount++;
+      }
+      var conSpan = document.createElement('span');
+      conSpan.textContent = '\uD83D\uDCCB ' + errCount + ' error' + (errCount !== 1 ? 's' : '');
+      badgeLine.appendChild(conSpan);
+      hasBadge = true;
+    }
+    if (step.networkLogs !== null) {
+      var failCount = 0;
+      for (var nl = 0; nl < step.networkLogs.length; nl++) {
+        if (step.networkLogs[nl].status >= 400 || step.networkLogs[nl].status === 0) failCount++;
+      }
+      var netSpan = document.createElement('span');
+      netSpan.textContent = '  \uD83C\uDF10 ' + failCount + ' failed';
+      badgeLine.appendChild(netSpan);
+      hasBadge = true;
+    }
+    if (hasBadge) {
+      summary.appendChild(badgeLine);
+      hasSummary = true;
+    }
+
+    // Screenshots count
+    if (step.screenshots.length > 0) {
+      var ssItem = document.createElement('div');
+      ssItem.className = 'step-summary-item';
+      ssItem.textContent = '\uD83D\uDCF8 ' + step.screenshots.length + ' screenshot' + (step.screenshots.length !== 1 ? 's' : '');
+      summary.appendChild(ssItem);
+      hasSummary = true;
+    }
+
+    if (hasSummary) {
+      card.appendChild(summary);
+    }
+
+    els.stepsList.appendChild(card);
+  }
+}
+
+// ============================================================================
+// Step capture handlers
+// ============================================================================
+async function handleStepCapture(action, stepId) {
+  var step = getStepById(stepId);
+  if (!step) return;
+
+  switch (action) {
+    case 'screenshot':
+      await captureScreenshotForStep(step);
+      break;
+    case 'element':
+      await captureElementForStep(step);
+      break;
+    case 'console':
+      await captureConsoleForStep(step);
+      break;
+    case 'network':
+      await captureNetworkForStep(step);
+      break;
+    case 'captureAll':
+      await captureAllForStep(step);
+      break;
+  }
+}
+
+async function captureScreenshotForStep(step) {
   setStatus('Capturing screenshot...');
 
-  chrome.runtime.sendMessage({ action: 'captureScreenshot' }, (response) => {
-    setLoading(els.btnScreenshot, false);
-
-    if (!response || !response.success) {
-      setStatus('Screenshot failed: ' + (response ? response.error : 'Unknown error'), 'error');
-      return;
-    }
-
-    // Store raw screenshot, then open annotation editor
-    const dataUrl = response.dataUrl;
-
-    setStatus('Opening annotation editor...');
-
-    chrome.runtime.sendMessage({
-      action: 'openAnnotationEditor',
-      dataUrl: dataUrl
-    }, (res) => {
-      if (res && res.success) {
-        setStatus('Annotate the screenshot in the new tab', 'success');
-        // The popup will close when user clicks away. The annotation editor
-        // will save results to chrome.storage.local and the popup can pick
-        // them up next time it opens.
-      } else {
-        // Even without annotation, we still have the raw screenshot — P3-19: push to array
-        if (state.screenshots.length >= MAX_SCREENSHOTS) state.screenshots.shift();
-        state.screenshots.push(dataUrl);
-        persistState();
-        markCaptured(els.btnScreenshot);
-        showScreenshotPreview();
-        updatePreviewBadges();
-        setStatus('Screenshot captured (annotation unavailable)', 'success');
-      }
-    });
+  var response = await new Promise(function (resolve) {
+    chrome.runtime.sendMessage({ action: 'captureScreenshot' }, function (r) { resolve(r); });
   });
-});
 
-function showScreenshotPreview() {
-  if (state.screenshots.length === 0) {
-    els.screenshotPreview.classList.remove('visible');
+  if (!response || !response.success) {
+    setStatus('Screenshot failed: ' + (response ? response.error : 'Unknown error'), 'error');
     return;
   }
-  // Show the latest screenshot thumbnail
-  els.screenshotImg.src = state.screenshots[state.screenshots.length - 1];
-  els.screenshotPreview.classList.add('visible');
-  // Show count badge if more than one
-  let countBadge = els.screenshotPreview.querySelector('.screenshot-count');
-  if (state.screenshots.length > 1) {
-    if (!countBadge) {
-      countBadge = createElement('div', {
-        className: 'screenshot-count',
-        style: { position: 'absolute', top: '6px', right: '6px', background: '#e94560', color: '#fff', borderRadius: '10px', padding: '2px 8px', fontSize: '11px', fontWeight: '600' }
-      });
-      els.screenshotPreview.style.position = 'relative';
-      els.screenshotPreview.appendChild(countBadge);
-    }
-    countBadge.textContent = state.screenshots.length + ' screenshots';
-  } else if (countBadge) {
-    countBadge.remove();
+
+  var dataUrl = response.dataUrl;
+
+  // Try to open annotation editor
+  setStatus('Opening annotation editor...');
+  var annoRes = await new Promise(function (resolve) {
+    chrome.runtime.sendMessage({ action: 'openAnnotationEditor', dataUrl: dataUrl }, function (r) { resolve(r); });
+  });
+
+  if (annoRes && annoRes.success) {
+    setStatus('Annotate the screenshot in the new tab', 'success');
+    // Annotation will be picked up on next popup open via storage restore
+  } else {
+    // No annotation editor; save raw screenshot directly
+    if (step.screenshots.length >= MAX_SCREENSHOTS_PER_STEP) step.screenshots.shift();
+    step.screenshots.push(dataUrl);
+    persistState();
+    renderSteps();
+    setStatus('Screenshot captured', 'success');
   }
 }
 
-// ============================================================================
-// DOM Element selector
-// ============================================================================
-els.btnElement.addEventListener('click', async () => {
-  setLoading(els.btnElement, true);
+async function captureElementForStep(step) {
   setStatus('Activating element selector...');
 
-  const tabId = await ensureContentScript();
-  if (!tabId) {
-    setLoading(els.btnElement, false);
-    return;
-  }
+  var tabId = await ensureContentScript();
+  if (!tabId) return;
 
-  chrome.tabs.sendMessage(tabId, { action: 'activateInspector' }, (response) => {
-    setLoading(els.btnElement, false);
-    if (response && response.success) {
-      setStatus('Click an element on the page to select it', 'success');
-      // The popup will close; selection is handled by content script which sends
-      // a message back. We listen for it below.
-    } else {
-      setStatus('Could not activate inspector', 'error');
-    }
+  var response = await new Promise(function (resolve) {
+    chrome.tabs.sendMessage(tabId, { action: 'activateInspector' }, function (r) { resolve(r); });
   });
-});
 
-// Listen for element selection from content script
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.action === 'elementSelected') {
-    state.elementInfo = message.elementInfo;
-    persistState();
-    markCaptured(els.btnElement);
-    showElementPreview(state.elementInfo);
-    updatePreviewBadges();
-    setStatus('Element captured', 'success');
-
-    // Persist to storage so it survives popup re-open (backward compat with content.js)
-    chrome.storage.local.set({ capturedElement: state.elementInfo });
+  if (response && response.success) {
+    setStatus('Click an element on the page to select it', 'success');
+    // Popup will close. Content script sends elementSelected message.
+    // We pick it up in the onMessage listener below.
+  } else {
+    setStatus('Could not activate inspector', 'error');
   }
-});
-
-function showElementPreview(info) {
-  els.elementPreview.replaceChildren();
-
-  // First line: <tag#id.class>
-  const line1 = createElement('div', { className: 'el-line' });
-  line1.appendChild(createElement('span', { className: 'el-tag', textContent: `<${info.tagName}` }));
-  if (info.id) {
-    line1.appendChild(document.createTextNode(' '));
-    line1.appendChild(createElement('span', { className: 'el-id', textContent: `#${info.id}` }));
-  }
-  if (info.classes.length) {
-    line1.appendChild(document.createTextNode(' '));
-    line1.appendChild(createElement('span', { className: 'el-class', textContent: `.${info.classes.join('.')}` }));
-  }
-  line1.appendChild(createElement('span', { className: 'el-tag', textContent: '>' }));
-  els.elementPreview.appendChild(line1);
-
-  // CSS Selector
-  const line2 = createElement('div', {
-    className: 'el-line',
-    textContent: info.cssSelector,
-    style: { marginTop: '4px', color: '#888', fontSize: '10px' }
-  });
-  els.elementPreview.appendChild(line2);
-
-  // Dimensions
-  const line3 = createElement('div', {
-    className: 'el-line',
-    textContent: `${info.boundingRect.width}x${info.boundingRect.height}px`,
-    style: { marginTop: '2px', color: '#888', fontSize: '10px' }
-  });
-  els.elementPreview.appendChild(line3);
-
-  els.elementPreview.classList.add('visible');
 }
 
-// ============================================================================
-// Console capture
-// ============================================================================
-els.btnConsole.addEventListener('click', async () => {
-  setLoading(els.btnConsole, true);
+async function captureConsoleForStep(step) {
   setStatus('Capturing console logs...');
 
-  const tabId = await ensureContentScript();
-  if (!tabId) {
-    setLoading(els.btnConsole, false);
-    return;
-  }
+  var tabId = await ensureContentScript();
+  if (!tabId) return;
 
-  chrome.tabs.sendMessage(tabId, { action: 'getConsoleLogs' }, (response) => {
-    setLoading(els.btnConsole, false);
-
-    if (chrome.runtime.lastError) {
-      setStatus('Failed to get console logs', 'error');
-      return;
-    }
-
-    if (response && response.success) {
-      state.consoleLogs = response.logs;
-      persistState();
-      markCaptured(els.btnConsole);
-      updatePreviewBadges();
-      setStatus(`Captured ${response.logs.length} console messages`, 'success');
-    } else {
-      setStatus('No console data available', 'error');
-    }
-  });
-});
-
-// ============================================================================
-// Network capture
-// ============================================================================
-els.btnNetwork.addEventListener('click', async () => {
-  setLoading(els.btnNetwork, true);
-  setStatus('Capturing network requests...');
-
-  const tabId = await ensureContentScript();
-  if (!tabId) {
-    setLoading(els.btnNetwork, false);
-    return;
-  }
-
-  chrome.tabs.sendMessage(tabId, { action: 'getNetworkLogs' }, (response) => {
-    setLoading(els.btnNetwork, false);
-
-    if (chrome.runtime.lastError) {
-      setStatus('Failed to get network logs', 'error');
-      return;
-    }
-
-    if (response && response.success) {
-      state.networkLogs = response.logs;
-      persistState();
-      markCaptured(els.btnNetwork);
-      updatePreviewBadges();
-      setStatus(`Captured ${response.logs.length} network requests`, 'success');
-    } else {
-      setStatus('No network data available', 'error');
-    }
-  });
-});
-
-// ============================================================================
-// Capture All — sequential: screenshot (raw) + console + network + tab info
-// ============================================================================
-els.btnCaptureAll.addEventListener('click', async () => {
-  els.btnCaptureAll.disabled = true;
-
-  // 1/6 — Screenshot (raw, no annotation editor) — P3-19: push to array
-  setStatus('Capturing 1/6 — Screenshot...');
-  const screenshotOk = await new Promise((resolve) => {
-    chrome.runtime.sendMessage({ action: 'captureScreenshot' }, (response) => {
-      if (response && response.success) {
-        if (state.screenshots.length >= MAX_SCREENSHOTS) state.screenshots.shift();
-        state.screenshots.push(response.dataUrl);
-        persistState();
-        markCaptured(els.btnScreenshot);
-        showScreenshotPreview();
-        updatePreviewBadges();
-        resolve(true);
-      } else {
-        resolve(false);
-      }
+  var response = await new Promise(function (resolve) {
+    chrome.tabs.sendMessage(tabId, { action: 'getConsoleLogs' }, function (r) {
+      if (chrome.runtime.lastError) { resolve(null); return; }
+      resolve(r);
     });
   });
-  if (!screenshotOk) {
+
+  if (response && response.success) {
+    step.consoleLogs = response.logs;
+    persistState();
+    renderSteps();
+    setStatus('Captured ' + response.logs.length + ' console messages', 'success');
+  } else {
+    setStatus('No console data available', 'error');
+  }
+}
+
+async function captureNetworkForStep(step) {
+  setStatus('Capturing network requests...');
+
+  var tabId = await ensureContentScript();
+  if (!tabId) return;
+
+  var response = await new Promise(function (resolve) {
+    chrome.tabs.sendMessage(tabId, { action: 'getNetworkLogs' }, function (r) {
+      if (chrome.runtime.lastError) { resolve(null); return; }
+      resolve(r);
+    });
+  });
+
+  if (response && response.success) {
+    step.networkLogs = response.logs;
+    persistState();
+    renderSteps();
+    setStatus('Captured ' + response.logs.length + ' network requests', 'success');
+  } else {
+    setStatus('No network data available', 'error');
+  }
+}
+
+async function captureAllForStep(step) {
+  state.currentStepId = step.id;
+
+  // 1/6 -- Screenshot (raw, no annotation editor)
+  setStatus('Capturing 1/6 -- Screenshot...');
+  var screenshotRes = await new Promise(function (resolve) {
+    chrome.runtime.sendMessage({ action: 'captureScreenshot' }, function (r) { resolve(r); });
+  });
+  if (screenshotRes && screenshotRes.success) {
+    if (step.screenshots.length >= MAX_SCREENSHOTS_PER_STEP) step.screenshots.shift();
+    step.screenshots.push(screenshotRes.dataUrl);
+    persistState();
+    renderSteps();
+  } else {
     setStatus('Screenshot failed, continuing...', 'error');
   }
 
-  // 2/6 — Console logs
-  setStatus('Capturing 2/6 — Console...');
-  const tabId = await ensureContentScript();
+  // 2/6 -- Console logs
+  setStatus('Capturing 2/6 -- Console...');
+  var tabId = await ensureContentScript();
   if (tabId) {
-    await new Promise((resolve) => {
-      chrome.tabs.sendMessage(tabId, { action: 'getConsoleLogs' }, (response) => {
+    await new Promise(function (resolve) {
+      chrome.tabs.sendMessage(tabId, { action: 'getConsoleLogs' }, function (response) {
         if (response && response.success) {
-          state.consoleLogs = response.logs;
+          step.consoleLogs = response.logs;
           persistState();
-          markCaptured(els.btnConsole);
-          updatePreviewBadges();
+          renderSteps();
         }
         resolve();
       });
     });
 
-    // 3/6 — Network logs
-    setStatus('Capturing 3/6 — Network...');
-    await new Promise((resolve) => {
-      chrome.tabs.sendMessage(tabId, { action: 'getNetworkLogs' }, (response) => {
+    // 3/6 -- Network logs
+    setStatus('Capturing 3/6 -- Network...');
+    await new Promise(function (resolve) {
+      chrome.tabs.sendMessage(tabId, { action: 'getNetworkLogs' }, function (response) {
         if (response && response.success) {
-          state.networkLogs = response.logs;
+          step.networkLogs = response.logs;
           persistState();
-          markCaptured(els.btnNetwork);
-          updatePreviewBadges();
+          renderSteps();
         }
         resolve();
       });
     });
 
-    // 4/6 — Framework info (P2-13)
-    setStatus('Capturing 4/6 — Framework...');
-    await new Promise((resolve) => {
-      chrome.tabs.sendMessage(tabId, { action: 'getFrameworkInfo' }, (response) => {
+    // 4/6 -- Framework info (global, not per-step)
+    setStatus('Capturing 4/6 -- Framework...');
+    await new Promise(function (resolve) {
+      chrome.tabs.sendMessage(tabId, { action: 'getFrameworkInfo' }, function (response) {
         if (response && response.success) {
           state.frameworkInfo = response.framework;
           persistState();
@@ -478,10 +570,10 @@ els.btnCaptureAll.addEventListener('click', async () => {
       });
     });
 
-    // 5/6 — Storage info (P2-15)
-    setStatus('Capturing 5/6 — Storage...');
-    await new Promise((resolve) => {
-      chrome.tabs.sendMessage(tabId, { action: 'getStorageInfo' }, (response) => {
+    // 5/6 -- Storage info (global)
+    setStatus('Capturing 5/6 -- Storage...');
+    await new Promise(function (resolve) {
+      chrome.tabs.sendMessage(tabId, { action: 'getStorageInfo' }, function (response) {
         if (response && response.success) {
           state.storageInfo = response.storage;
           persistState();
@@ -490,10 +582,10 @@ els.btnCaptureAll.addEventListener('click', async () => {
       });
     });
 
-    // 6/6 — Navigation history (P2-16)
-    setStatus('Capturing 6/6 — Navigation...');
-    await new Promise((resolve) => {
-      chrome.tabs.sendMessage(tabId, { action: 'getNavigationHistory' }, (response) => {
+    // 6/6 -- Navigation history (global)
+    setStatus('Capturing 6/6 -- Navigation...');
+    await new Promise(function (resolve) {
+      chrome.tabs.sendMessage(tabId, { action: 'getNavigationHistory' }, function (response) {
         if (response && response.success) {
           state.navigationHistory = response.history;
           persistState();
@@ -503,9 +595,9 @@ els.btnCaptureAll.addEventListener('click', async () => {
     });
   }
 
-  // Also grab tab info
-  await new Promise((resolve) => {
-    chrome.runtime.sendMessage({ action: 'getActiveTabInfo' }, (res) => {
+  // Tab info (global)
+  await new Promise(function (resolve) {
+    chrome.runtime.sendMessage({ action: 'getActiveTabInfo' }, function (res) {
       if (res && res.success) {
         state.tabInfo = res.tabInfo;
         persistState();
@@ -514,19 +606,45 @@ els.btnCaptureAll.addEventListener('click', async () => {
     });
   });
 
-  els.btnCaptureAll.disabled = false;
   setStatus('All captured!', 'success');
+}
+
+// ============================================================================
+// Listen for element selection from content script
+// ============================================================================
+chrome.runtime.onMessage.addListener(function (message) {
+  if (message.action === 'elementSelected') {
+    var step = getCurrentStep();
+    if (!step) {
+      // If no step exists yet, create one
+      step = createStep();
+    }
+    if (step) {
+      step.elements.push(message.elementInfo);
+      persistState();
+      renderSteps();
+      setStatus('Element captured', 'success');
+    }
+
+    // Also persist to capturedElement for backward compat with content.js
+    chrome.storage.local.set({ capturedElement: message.elementInfo });
+  }
+});
+
+// ============================================================================
+// Add Step button
+// ============================================================================
+els.btnAddStep.addEventListener('click', function () {
+  createStep();
 });
 
 // ============================================================================
 // Clear / Reset
 // ============================================================================
-els.btnClear.addEventListener('click', () => {
+els.btnClear.addEventListener('click', function () {
   // Reset state
-  state.screenshots = [];
-  state.consoleLogs = null;
-  state.networkLogs = null;
-  state.elementInfo = null;
+  state.steps = [];
+  state.currentStepId = null;
   state.tabInfo = null;
   state.frameworkInfo = null;
   state.storageInfo = null;
@@ -535,22 +653,11 @@ els.btnClear.addEventListener('click', () => {
   // Clear storage
   chrome.storage.local.remove(['annotatedScreenshot', 'capturedElement', 'bugjarForm', 'bugjarState']);
 
-  // Reset captured badges on buttons
-  [els.btnScreenshot, els.btnElement, els.btnConsole, els.btnNetwork].forEach(btn => {
-    btn.classList.remove('captured');
-  });
-
   // Clear form fields
   els.description.value = '';
-  els.steps.value = '';
 
-  // Hide previews
-  els.screenshotPreview.classList.remove('visible');
-  els.screenshotImg.src = '';
-  els.elementPreview.classList.remove('visible');
-  els.elementPreview.replaceChildren();
-  els.capturedPreview.replaceChildren();
-  els.capturedPreview.classList.remove('has-data');
+  // Re-render
+  renderSteps();
 
   setStatus('Cleared', 'success');
 });
@@ -558,39 +665,39 @@ els.btnClear.addEventListener('click', () => {
 // ============================================================================
 // Generate Report
 // ============================================================================
-els.btnGenerate.addEventListener('click', async () => {
+els.btnGenerate.addEventListener('click', async function () {
   setStatus('Generating report...');
 
   // Gather tab info
-  await new Promise((resolve) => {
-    chrome.runtime.sendMessage({ action: 'getActiveTabInfo' }, (res) => {
+  await new Promise(function (resolve) {
+    chrome.runtime.sendMessage({ action: 'getActiveTabInfo' }, function (res) {
       if (res && res.success) state.tabInfo = res.tabInfo;
       resolve();
     });
   });
 
-  // P2-13, P2-15, P2-16: Fetch framework, storage, navigation if not already captured
-  const tabId = await ensureContentScript();
+  // Fetch framework, storage, navigation if not already captured
+  var tabId = await ensureContentScript();
   if (tabId) {
     if (!state.frameworkInfo) {
-      await new Promise((resolve) => {
-        chrome.tabs.sendMessage(tabId, { action: 'getFrameworkInfo' }, (response) => {
+      await new Promise(function (resolve) {
+        chrome.tabs.sendMessage(tabId, { action: 'getFrameworkInfo' }, function (response) {
           if (response && response.success) state.frameworkInfo = response.framework;
           resolve();
         });
       });
     }
     if (!state.storageInfo) {
-      await new Promise((resolve) => {
-        chrome.tabs.sendMessage(tabId, { action: 'getStorageInfo' }, (response) => {
+      await new Promise(function (resolve) {
+        chrome.tabs.sendMessage(tabId, { action: 'getStorageInfo' }, function (response) {
           if (response && response.success) state.storageInfo = response.storage;
           resolve();
         });
       });
     }
     if (!state.navigationHistory) {
-      await new Promise((resolve) => {
-        chrome.tabs.sendMessage(tabId, { action: 'getNavigationHistory' }, (response) => {
+      await new Promise(function (resolve) {
+        chrome.tabs.sendMessage(tabId, { action: 'getNavigationHistory' }, function (response) {
           if (response && response.success) state.navigationHistory = response.history;
           resolve();
         });
@@ -598,51 +705,59 @@ els.btnGenerate.addEventListener('click', async () => {
     }
   }
 
-  {
-    // Preview summary before download
-    const parts = [];
-    if (state.screenshots.length > 0) parts.push(state.screenshots.length + ' screenshot' + (state.screenshots.length !== 1 ? 's' : ''));
-    if (state.consoleLogs) {
-      const errCount = state.consoleLogs.filter(l => l.level === 'error').length;
-      parts.push(errCount + ' error' + (errCount !== 1 ? 's' : ''));
-    }
-    if (state.networkLogs) parts.push(state.networkLogs.length + ' request' + (state.networkLogs.length !== 1 ? 's' : ''));
-    if (state.elementInfo) parts.push('1 element');
-    const summary = parts.length > 0 ? parts.join(', ') : 'no captures';
-    setStatus('Report: ' + summary + ' \u2192 Downloading...');
-
-    buildAndDownloadReport();
+  // Build summary for status bar
+  var parts = [];
+  var totalScreenshots = 0;
+  var totalElements = 0;
+  var totalConsoleSteps = 0;
+  var totalNetworkSteps = 0;
+  for (var si = 0; si < state.steps.length; si++) {
+    totalScreenshots += state.steps[si].screenshots.length;
+    totalElements += state.steps[si].elements.length;
+    if (state.steps[si].consoleLogs) totalConsoleSteps++;
+    if (state.steps[si].networkLogs) totalNetworkSteps++;
   }
+  if (totalScreenshots > 0) parts.push(totalScreenshots + ' screenshot' + (totalScreenshots !== 1 ? 's' : ''));
+  if (totalElements > 0) parts.push(totalElements + ' element' + (totalElements !== 1 ? 's' : ''));
+  if (totalConsoleSteps > 0) parts.push('console in ' + totalConsoleSteps + ' step' + (totalConsoleSteps !== 1 ? 's' : ''));
+  if (totalNetworkSteps > 0) parts.push('network in ' + totalNetworkSteps + ' step' + (totalNetworkSteps !== 1 ? 's' : ''));
+  var summary = parts.length > 0 ? parts.join(', ') : 'no captures';
+  setStatus('Report: ' + summary + ' \u2192 Downloading...');
+
+  buildAndDownloadReport();
 });
 
+// ============================================================================
+// Report building helpers
+// ============================================================================
 function parseUserAgent(ua) {
-  let os = 'Unknown';
-  if (ua.includes('Mac OS X')) os = 'macOS';
-  else if (ua.includes('Windows')) os = 'Windows';
-  else if (ua.includes('Linux')) os = 'Linux';
-  else if (ua.includes('Android')) os = 'Android';
-  else if (ua.includes('iPhone') || ua.includes('iPad')) os = 'iOS';
+  var os = 'Unknown';
+  if (ua.indexOf('Mac OS X') !== -1) os = 'macOS';
+  else if (ua.indexOf('Windows') !== -1) os = 'Windows';
+  else if (ua.indexOf('Linux') !== -1) os = 'Linux';
+  else if (ua.indexOf('Android') !== -1) os = 'Android';
+  else if (ua.indexOf('iPhone') !== -1 || ua.indexOf('iPad') !== -1) os = 'iOS';
 
-  let browser = 'Unknown';
-  const chromeMatch = ua.match(/Chrome\/([\d.]+)/);
-  const firefoxMatch = ua.match(/Firefox\/([\d.]+)/);
-  const safariMatch = ua.match(/Version\/([\d.]+).*Safari/);
-  const edgeMatch = ua.match(/Edg\/([\d.]+)/);
+  var browser = 'Unknown';
+  var chromeMatch = ua.match(/Chrome\/([\d.]+)/);
+  var firefoxMatch = ua.match(/Firefox\/([\d.]+)/);
+  var safariMatch = ua.match(/Version\/([\d.]+).*Safari/);
+  var edgeMatch = ua.match(/Edg\/([\d.]+)/);
   if (edgeMatch) browser = 'Edge ' + edgeMatch[1];
   else if (chromeMatch) browser = 'Chrome ' + chromeMatch[1];
   else if (firefoxMatch) browser = 'Firefox ' + firefoxMatch[1];
   else if (safariMatch) browser = 'Safari ' + safariMatch[1];
 
-  return { os, browser };
+  return { os: os, browser: browser };
 }
 
 function getEnvironmentInfo() {
-  const ua = navigator.userAgent;
-  const parsed = parseUserAgent(ua);
-  const screenW = window.screen.width;
-  const screenH = window.screen.height;
-  const vpW = window.innerWidth;
-  const vpH = window.innerHeight;
+  var ua = navigator.userAgent;
+  var parsed = parseUserAgent(ua);
+  var screenW = window.screen.width;
+  var screenH = window.screen.height;
+  var vpW = window.innerWidth;
+  var vpH = window.innerHeight;
 
   return {
     resolution: screenW + 'x' + screenH + ' (viewport: ' + vpW + 'x' + vpH + ')',
@@ -655,39 +770,74 @@ function getEnvironmentInfo() {
   };
 }
 
+function dataUrlToBlob(dataUrl) {
+  var splitParts = dataUrl.split(',');
+  var mimeMatch = splitParts[0].match(/:(.*?);/);
+  var mime = mimeMatch ? mimeMatch[1] : 'image/png';
+  var binary = atob(splitParts[1]);
+  var array = new Uint8Array(binary.length);
+  for (var i = 0; i < binary.length; i++) array[i] = binary.charCodeAt(i);
+  return new Blob([array], { type: mime });
+}
+
+function downloadFile(filename, content, mimeType) {
+  var blob = content instanceof Blob ? content : new Blob([content], { type: mimeType });
+  var downloadUrl = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = downloadUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(downloadUrl);
+}
+
 function buildAndDownloadReport() {
-  const now = new Date();
-  const dateStr = now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  var now = new Date();
+  var dateStr = now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
 
-  const description = els.description.value.trim() || '(No description provided)';
-  const steps = els.steps.value.trim();
-  const category = els.category.value;
-  const priority = els.priority.value;
+  var description = els.description.value.trim() || '(No description provided)';
+  var category = els.category.value;
+  var priority = els.priority.value;
 
-  const categoryLabels = { bug: 'Bug', feature: 'Feature Request', question: 'Question', other: 'Other' };
-  const priorityLabels = { low: 'Low', medium: 'Medium', high: 'High', critical: 'Critical' };
-  const priorityColors = { low: '#27ae60', medium: '#f39c12', high: '#e67e22', critical: '#e74c3c' };
+  var categoryLabels = { bug: 'Bug', feature: 'Feature Request', question: 'Question', other: 'Other' };
+  var priorityLabels = { low: 'Low', medium: 'Medium', high: 'High', critical: 'Critical' };
 
-  const url = state.tabInfo ? state.tabInfo.url : '(Unknown)';
-  const title = state.tabInfo ? state.tabInfo.title : '(Unknown)';
-  const userAgent = navigator.userAgent;
-  const environment = getEnvironmentInfo();
+  var url = state.tabInfo ? state.tabInfo.url : '(Unknown)';
+  var title = state.tabInfo ? state.tabInfo.title : '(Unknown)';
+  var userAgent = navigator.userAgent;
+  var environment = getEnvironmentInfo();
 
-  const ctx = {
-    now, dateStr, description, steps, category, priority,
-    categoryLabels, priorityLabels, priorityColors,
-    url, title, userAgent, environment
+  var ctx = {
+    now: now, dateStr: dateStr, description: description, category: category, priority: priority,
+    categoryLabels: categoryLabels, priorityLabels: priorityLabels,
+    url: url, title: title, userAgent: userAgent, environment: environment
   };
 
   // Build Claude-friendly Markdown report
-  const reportMD = buildReportMarkdown(ctx);
-  const filename = `feedback-${dateStr}.md`;
+  var reportMD = buildReportMarkdown(ctx);
+  var filename = 'feedback-' + dateStr + '.md';
   downloadFile(filename, reportMD, 'text/markdown');
 
   // Save to history
-  const consoleErrorCount = state.consoleLogs ? state.consoleLogs.filter(l => l.level === 'error').length : 0;
-  const networkFailCount = state.networkLogs ? state.networkLogs.filter(r => r.status >= 400 || r.status === 0).length : 0;
-  const metadata = {
+  var consoleErrorCount = 0;
+  var networkFailCount = 0;
+  var totalScreenshots = 0;
+  for (var hi = 0; hi < state.steps.length; hi++) {
+    var hs = state.steps[hi];
+    totalScreenshots += hs.screenshots.length;
+    if (hs.consoleLogs) {
+      for (var hc = 0; hc < hs.consoleLogs.length; hc++) {
+        if (hs.consoleLogs[hc].level === 'error') consoleErrorCount++;
+      }
+    }
+    if (hs.networkLogs) {
+      for (var hn = 0; hn < hs.networkLogs.length; hn++) {
+        if (hs.networkLogs[hn].status >= 400 || hs.networkLogs[hn].status === 0) networkFailCount++;
+      }
+    }
+  }
+  var metadata = {
     id: Date.now(),
     date: now.toISOString(),
     url: url,
@@ -696,17 +846,15 @@ function buildAndDownloadReport() {
     priority: priority,
     description: description.substring(0, 100),
     filename: filename,
-    hasScreenshot: state.screenshots.length > 0,
+    hasScreenshot: totalScreenshots > 0,
     consoleErrorCount: consoleErrorCount,
     networkFailCount: networkFailCount
   };
   saveToHistory(metadata);
 
   // Auto-clear state after report generation
-  state.screenshots = [];
-  state.consoleLogs = null;
-  state.networkLogs = null;
-  state.elementInfo = null;
+  state.steps = [];
+  state.currentStepId = null;
   state.frameworkInfo = null;
   state.storageInfo = null;
   state.navigationHistory = null;
@@ -716,86 +864,58 @@ function buildAndDownloadReport() {
 
   // Clear UI
   els.description.value = '';
-  els.steps.value = '';
   els.category.value = 'bug';
   els.priority.value = 'medium';
-
-  // Hide previews, remove captured badges
-  els.screenshotPreview.classList.remove('visible');
-  els.screenshotImg.src = '';
-  els.elementPreview.classList.remove('visible');
-  els.elementPreview.replaceChildren();
-  els.capturedPreview.replaceChildren();
-  els.capturedPreview.classList.remove('has-data');
-  [els.btnScreenshot, els.btnElement, els.btnConsole, els.btnNetwork].forEach(btn => {
-    btn.classList.remove('captured');
-  });
+  renderSteps();
 
   setStatus(t('reportCleared'), 'success');
 }
 
-function dataUrlToBlob(dataUrl) {
-  const parts = dataUrl.split(',');
-  const mimeMatch = parts[0].match(/:(.*?);/);
-  const mime = mimeMatch ? mimeMatch[1] : 'image/png';
-  const binary = atob(parts[1]);
-  const array = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) array[i] = binary.charCodeAt(i);
-  return new Blob([array], { type: mime });
-}
-
-function downloadFile(filename, content, mimeType) {
-  const blob = content instanceof Blob ? content : new Blob([content], { type: mimeType });
-  const downloadUrl = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = downloadUrl;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(downloadUrl);
-}
-
 /**
  * Builds a Markdown report optimized for Claude / AI consumption.
- * All data is structured as text blocks that Claude can parse and act on.
+ * Step-based format: each step gets its own section with captures.
  */
 function buildReportMarkdown(ctx) {
-  const {
-    now, dateStr, description, steps, category, priority,
-    categoryLabels, priorityLabels,
-    url, title, userAgent, environment
-  } = ctx;
+  var now = ctx.now;
+  var dateStr = ctx.dateStr;
+  var description = ctx.description;
+  var category = ctx.category;
+  var priority = ctx.priority;
+  var categoryLabels = ctx.categoryLabels;
+  var priorityLabels = ctx.priorityLabels;
+  var url = ctx.url;
+  var title = ctx.title;
+  var userAgent = ctx.userAgent;
+  var environment = ctx.environment;
 
-  const lines = [];
+  var lines = [];
 
   lines.push('# Bug Report / Feedback');
   lines.push('');
-  lines.push(`**Date:** ${now.toISOString()}`);
-  lines.push(`**URL:** ${url}`);
-  lines.push(`**Page Title:** ${title}`);
-  lines.push(`**Category:** ${categoryLabels[category] || category}`);
-  lines.push(`**Priority:** ${priorityLabels[priority] || priority}`);
-  lines.push(`**Browser:** ${userAgent}`);
+  lines.push('**Date:** ' + now.toISOString());
+  lines.push('**URL:** ' + url);
+  lines.push('**Page Title:** ' + title);
+  lines.push('**Category:** ' + (categoryLabels[category] || category));
+  lines.push('**Priority:** ' + (priorityLabels[priority] || priority));
+  lines.push('**Browser:** ' + userAgent);
   lines.push('');
 
   // Environment
   if (environment) {
     lines.push('## Environment');
     lines.push('');
-    lines.push(`- **Resolution:** ${environment.resolution}`);
-    lines.push(`- **Device Pixel Ratio:** ${environment.devicePixelRatio}`);
-    lines.push(`- **OS:** ${environment.os}`);
-    lines.push(`- **Browser:** ${environment.browser}`);
-    lines.push(`- **Language:** ${environment.language}`);
-    lines.push(`- **Timezone:** ${environment.timezone}`);
-    lines.push(`- **Touch:** ${environment.touch}`);
-    // P2-13: Framework info
+    lines.push('- **Resolution:** ' + environment.resolution);
+    lines.push('- **Device Pixel Ratio:** ' + environment.devicePixelRatio);
+    lines.push('- **OS:** ' + environment.os);
+    lines.push('- **Browser:** ' + environment.browser);
+    lines.push('- **Language:** ' + environment.language);
+    lines.push('- **Timezone:** ' + environment.timezone);
+    lines.push('- **Touch:** ' + environment.touch);
     if (state.frameworkInfo) {
-      const fw = state.frameworkInfo;
-      const fwStr = fw.name !== 'Unknown' ? `${fw.name}${fw.version ? ' ' + fw.version : ''}` : 'Not detected';
-      lines.push(`- **Framework:** ${fwStr}`);
-      if (fw.jquery) lines.push(`- **jQuery:** ${fw.jquery}`);
+      var fw = state.frameworkInfo;
+      var fwStr = fw.name !== 'Unknown' ? (fw.name + (fw.version ? ' ' + fw.version : '')) : 'Not detected';
+      lines.push('- **Framework:** ' + fwStr);
+      if (fw.jquery) lines.push('- **jQuery:** ' + fw.jquery);
     }
     lines.push('');
   }
@@ -806,119 +926,105 @@ function buildReportMarkdown(ctx) {
   lines.push(description);
   lines.push('');
 
-  // Steps to Reproduce
-  if (steps) {
-    lines.push('## Steps to Reproduce');
+  // Reproduction Steps
+  if (state.steps.length > 0) {
+    lines.push('## Reproduction Steps');
     lines.push('');
-    lines.push(steps);
-    lines.push('');
-  }
 
-  // Screenshots — P3-19: multi-screenshots saved as separate files
-  if (state.screenshots.length > 0) {
-    lines.push('## Screenshots');
-    lines.push('');
-    state.screenshots.forEach((ss, idx) => {
-      const imgExt = ss.startsWith('data:image/jpeg') ? 'jpg' : 'png';
-      const imgMime = ss.startsWith('data:image/jpeg') ? 'image/jpeg' : 'image/png';
-      const suffix = state.screenshots.length === 1 ? '' : `-${idx + 1}`;
-      const imgFilename = `feedback-${dateStr}-screenshot${suffix}.${imgExt}`;
-      downloadFile(imgFilename, dataUrlToBlob(ss), imgMime);
-      lines.push(`![Screenshot ${idx + 1}](${imgFilename})`);
-    });
-    lines.push('');
-  }
-
-  // Selected Element
-  if (state.elementInfo) {
-    const el = state.elementInfo;
-    lines.push('## Selected DOM Element');
-    lines.push('');
-    lines.push('```');
-    lines.push(`Tag:      ${el.tagName || ''}`);
-    lines.push(`ID:       ${el.id || '(none)'}`);
-    lines.push(`Classes:  ${el.classes || '(none)'}`);
-    lines.push(`Selector: ${el.cssSelector || ''}`);
-    lines.push(`XPath:    ${el.xpath || ''}`);
-    lines.push(`Text:     ${(el.textContent || '').slice(0, 200)}`);
-    lines.push(`Rect:     ${el.boundingRect ? `${el.boundingRect.width}x${el.boundingRect.height} at (${el.boundingRect.left}, ${el.boundingRect.top})` : ''}`);
-    lines.push('```');
-    if (el.computedStyles && Object.keys(el.computedStyles).length > 0) {
+    for (var si = 0; si < state.steps.length; si++) {
+      var step = state.steps[si];
+      var stepNum = si + 1;
+      var stepTitle = step.description || '(no description)';
+      lines.push('### Step ' + stepNum + ': ' + stepTitle);
       lines.push('');
-      lines.push('Key computed styles:');
-      lines.push('```css');
-      for (const [prop, val] of Object.entries(el.computedStyles)) {
-        lines.push(`${prop}: ${val};`);
-      }
-      lines.push('```');
-    }
-    lines.push('');
-  }
 
-  // Console Logs
-  if (state.consoleLogs && state.consoleLogs.length > 0) {
-    lines.push('## Console Logs');
-    lines.push('');
-    const errors = state.consoleLogs.filter(l => l.level === 'error');
-    const warnings = state.consoleLogs.filter(l => l.level === 'warn');
-    lines.push(`Total: ${state.consoleLogs.length} messages (${errors.length} errors, ${warnings.length} warnings)`);
-    lines.push('');
-    lines.push('```');
-    for (const log of state.consoleLogs) {
-      const ts = log.timestamp ? new Date(log.timestamp).toISOString().slice(11, 23) : '';
-      const level = `[${(log.level || 'log').toUpperCase()}]`;
-      const msg = Array.isArray(log.args) ? log.args.join(' ') : (log.message || '');
-      lines.push(`${ts} ${level} ${msg}`);
-      // P2-11: Include stack trace for errors
-      if (log.stack && log.level === 'error') {
-        const stackLines = log.stack.split('\n').slice(2, 6); // skip Error + captureConsole frames
-        for (const sl of stackLines) {
-          lines.push(`  ${sl.trim()}`);
+      // Elements
+      if (step.elements.length > 0) {
+        lines.push('**Selected elements:**');
+        for (var ei = 0; ei < step.elements.length; ei++) {
+          var el = step.elements[ei];
+          var elLabel = '`' + el.tagName;
+          if (el.classes && el.classes.length) {
+            elLabel += '.' + el.classes.slice(0, 2).join('.');
+          }
+          elLabel += '`';
+          var elSelector = el.cssSelector || '';
+          var elSize = el.boundingRect ? (el.boundingRect.width + 'x' + el.boundingRect.height) : '';
+          lines.push('- ' + elLabel + ' \u2014 ' + elSelector + (elSize ? ' (' + elSize + ')' : ''));
+        }
+        lines.push('');
+      }
+
+      // Console logs
+      if (step.consoleLogs && step.consoleLogs.length > 0) {
+        var errors = [];
+        var warnings = [];
+        for (var cl = 0; cl < step.consoleLogs.length; cl++) {
+          if (step.consoleLogs[cl].level === 'error') errors.push(step.consoleLogs[cl]);
+          if (step.consoleLogs[cl].level === 'warn') warnings.push(step.consoleLogs[cl]);
+        }
+        lines.push('**Console (' + errors.length + ' error' + (errors.length !== 1 ? 's' : '') + '):**');
+        lines.push('```');
+        for (var cli = 0; cli < step.consoleLogs.length; cli++) {
+          var log = step.consoleLogs[cli];
+          var ts = log.timestamp ? new Date(log.timestamp).toISOString().slice(11, 23) : '';
+          var level = '[' + (log.level || 'log').toUpperCase() + ']';
+          var msg = Array.isArray(log.args) ? log.args.join(' ') : (log.message || '');
+          lines.push(ts + ' ' + level + ' ' + msg);
+          if (log.stack && log.level === 'error') {
+            var stackLines = log.stack.split('\n').slice(2, 6);
+            for (var sli = 0; sli < stackLines.length; sli++) {
+              lines.push('  ' + stackLines[sli].trim());
+            }
+          }
+        }
+        lines.push('```');
+        lines.push('');
+      }
+
+      // Network - failed requests
+      if (step.networkLogs && step.networkLogs.length > 0) {
+        var failed = [];
+        for (var nli = 0; nli < step.networkLogs.length; nli++) {
+          if (step.networkLogs[nli].status >= 400 || step.networkLogs[nli].status === 0) {
+            failed.push(step.networkLogs[nli]);
+          }
+        }
+        if (failed.length > 0) {
+          lines.push('**Failed requests:**');
+          lines.push('| Method | Status | URL | Duration |');
+          lines.push('|--------|--------|-----|----------|');
+          for (var fi = 0; fi < failed.length; fi++) {
+            var req = failed[fi];
+            lines.push('| ' + req.method + ' | ' + (req.status || 'ERR') + ' | ' + req.url + ' | ' + (req.duration || '?') + 'ms |');
+            if (req.responseBody) {
+              lines.push('> Response: ' + req.responseBody);
+            }
+          }
+          lines.push('');
         }
       }
-    }
-    lines.push('```');
-    lines.push('');
-  }
 
-  // Network Requests
-  if (state.networkLogs && state.networkLogs.length > 0) {
-    lines.push('## Network Requests');
-    lines.push('');
-    const failed = state.networkLogs.filter(r => r.status >= 400 || r.status === 0);
-    lines.push(`Total: ${state.networkLogs.length} requests (${failed.length} failed)`);
-    lines.push('');
-
-    if (failed.length > 0) {
-      lines.push('### Failed Requests');
-      lines.push('');
-      lines.push('| Method | Status | URL | Duration |');
-      lines.push('|--------|--------|-----|----------|');
-      for (const req of failed) {
-        lines.push(`| ${req.method} | ${req.status || 'ERR'} | ${req.url} | ${req.duration || '?'}ms |`);
-        // P2-12: Include response body for failed requests
-        if (req.responseBody) {
-          lines.push(`> Response: ${req.responseBody}`);
+      // Screenshots
+      if (step.screenshots.length > 0) {
+        for (var ssi = 0; ssi < step.screenshots.length; ssi++) {
+          var ss = step.screenshots[ssi];
+          var imgExt = ss.indexOf('data:image/jpeg') === 0 ? 'jpg' : 'png';
+          var imgMime = ss.indexOf('data:image/jpeg') === 0 ? 'image/jpeg' : 'image/png';
+          var imgFilename = 'feedback-step' + stepNum + '-' + (ssi + 1) + '.' + imgExt;
+          downloadFile(imgFilename, dataUrlToBlob(ss), imgMime);
+          lines.push('![Step ' + stepNum + ' - Screenshot ' + (ssi + 1) + '](' + imgFilename + ')');
         }
+        lines.push('');
       }
-      lines.push('');
     }
-
-    lines.push('### All Requests');
-    lines.push('');
-    lines.push('| Method | Status | URL | Duration |');
-    lines.push('|--------|--------|-----|----------|');
-    for (const req of state.networkLogs) {
-      lines.push(`| ${req.method} | ${req.status || '?'} | ${req.url} | ${req.duration || '?'}ms |`);
-    }
-    lines.push('');
   }
 
-  // P2-15: Storage section
+  // Storage section (global)
   if (state.storageInfo) {
-    const ls = state.storageInfo.localStorage || [];
-    const ss = state.storageInfo.sessionStorage || [];
-    if (ls.length > 0 || ss.length > 0) {
+    var ls = state.storageInfo.localStorage || [];
+    var ss2 = state.storageInfo.sessionStorage || [];
+    if (ls.length > 0 || ss2.length > 0) {
       lines.push('## Storage');
       lines.push('');
       if (ls.length > 0) {
@@ -926,33 +1032,34 @@ function buildReportMarkdown(ctx) {
         lines.push('');
         lines.push('| Key | Size (chars) |');
         lines.push('|-----|-------------|');
-        for (const item of ls) {
-          lines.push(`| ${item.key} | ${item.size} |`);
+        for (var lsi = 0; lsi < ls.length; lsi++) {
+          lines.push('| ' + ls[lsi].key + ' | ' + ls[lsi].size + ' |');
         }
         lines.push('');
       }
-      if (ss.length > 0) {
+      if (ss2.length > 0) {
         lines.push('### sessionStorage');
         lines.push('');
         lines.push('| Key | Size (chars) |');
         lines.push('|-----|-------------|');
-        for (const item of ss) {
-          lines.push(`| ${item.key} | ${item.size} |`);
+        for (var ssi2 = 0; ssi2 < ss2.length; ssi2++) {
+          lines.push('| ' + ss2[ssi2].key + ' | ' + ss2[ssi2].size + ' |');
         }
         lines.push('');
       }
     }
   }
 
-  // P2-16: Navigation History
+  // Navigation History (global)
   if (state.navigationHistory && state.navigationHistory.length > 0) {
     lines.push('## Navigation History');
     lines.push('');
     lines.push('| Time | Type | URL |');
     lines.push('|------|------|-----|');
-    for (const nav of state.navigationHistory) {
-      const ts = nav.timestamp ? new Date(nav.timestamp).toISOString().slice(11, 23) : '';
-      lines.push(`| ${ts} | ${nav.type} | ${nav.url} |`);
+    for (var ni = 0; ni < state.navigationHistory.length; ni++) {
+      var nav = state.navigationHistory[ni];
+      var navTs = nav.timestamp ? new Date(nav.timestamp).toISOString().slice(11, 23) : '';
+      lines.push('| ' + navTs + ' | ' + nav.type + ' | ' + nav.url + ' |');
     }
     lines.push('');
   }
@@ -965,8 +1072,8 @@ function buildReportMarkdown(ctx) {
   lines.push('This report was generated by the BugJar extension.');
   lines.push('Use the information above to:');
   lines.push('1. Identify the root cause of the issue based on the console errors and network failures');
-  lines.push('2. Look at the screenshot to understand the visual state');
-  lines.push('3. If a DOM element was selected, inspect the component at that CSS selector');
+  lines.push('2. Look at the screenshots to understand the visual state at each step');
+  lines.push('3. If DOM elements were selected, inspect the components at those CSS selectors');
   lines.push('4. Propose a fix with the specific file and line to modify');
   lines.push('');
 
@@ -985,83 +1092,93 @@ function saveFormFields() {
   chrome.storage.local.set({
     bugjarForm: {
       description: els.description.value,
-      steps: els.steps.value,
       category: els.category.value,
-      priority: els.priority.value,
+      priority: els.priority.value
     }
   });
 }
 els.description.addEventListener('input', saveFormFields);
-els.steps.addEventListener('input', saveFormFields);
 els.category.addEventListener('change', saveFormFields);
 els.priority.addEventListener('change', saveFormFields);
 
 // ============================================================================
 // Restore persisted data on popup open (CRIT-2 + update banner)
 // ============================================================================
-chrome.storage.local.get(['annotatedScreenshot', 'capturedElement', 'updateAvailable', 'bugjarLang', 'helpDismissed', 'bugjarForm', 'bugjarState'], (stored) => {
+chrome.storage.local.get(['annotatedScreenshot', 'capturedElement', 'updateAvailable', 'bugjarLang', 'helpDismissed', 'bugjarForm', 'bugjarState'], function (stored) {
   // Restore form fields
   if (stored.bugjarForm) {
     if (stored.bugjarForm.description) els.description.value = stored.bugjarForm.description;
-    if (stored.bugjarForm.steps) els.steps.value = stored.bugjarForm.steps;
     if (stored.bugjarForm.category) els.category.value = stored.bugjarForm.category;
     if (stored.bugjarForm.priority) els.priority.value = stored.bugjarForm.priority;
   }
 
   // Restore full capture state from unified key
   if (stored.bugjarState) {
-    const s = stored.bugjarState;
-    if (s.screenshots && s.screenshots.length) { state.screenshots = s.screenshots; markCaptured(els.btnScreenshot); showScreenshotPreview(); }
-    if (s.consoleLogs) { state.consoleLogs = s.consoleLogs; markCaptured(els.btnConsole); }
-    if (s.networkLogs) { state.networkLogs = s.networkLogs; markCaptured(els.btnNetwork); }
-    if (s.elementInfo) { state.elementInfo = s.elementInfo; markCaptured(els.btnElement); showElementPreview(s.elementInfo); }
-    if (s.tabInfo) { state.tabInfo = s.tabInfo; }
-    if (s.frameworkInfo) { state.frameworkInfo = s.frameworkInfo; }
-    if (s.storageInfo) { state.storageInfo = s.storageInfo; }
-    if (s.navigationHistory) { state.navigationHistory = s.navigationHistory; }
-    updatePreviewBadges();
+    var s = stored.bugjarState;
+    if (s.steps && s.steps.length) {
+      state.steps = s.steps;
+      state.currentStepId = s.currentStepId || null;
+    }
+    if (s.tabInfo) state.tabInfo = s.tabInfo;
+    if (s.frameworkInfo) state.frameworkInfo = s.frameworkInfo;
+    if (s.storageInfo) state.storageInfo = s.storageInfo;
+    if (s.navigationHistory) state.navigationHistory = s.navigationHistory;
   }
 
-  // BUG 10 fix: consume annotatedScreenshot from annotation editor, merge into bugjarState
+  // BUG 10 fix: consume annotatedScreenshot from annotation editor, merge into current step
   if (stored.annotatedScreenshot) {
-    if (state.screenshots.length >= MAX_SCREENSHOTS) state.screenshots.shift();
-    state.screenshots.push(stored.annotatedScreenshot);
-    chrome.storage.local.remove('annotatedScreenshot'); // consume it — prevent duplicate on next open
+    var step = getCurrentStep();
+    if (!step) {
+      step = createStep();
+    }
+    if (step) {
+      if (step.screenshots.length >= MAX_SCREENSHOTS_PER_STEP) step.screenshots.shift();
+      step.screenshots.push(stored.annotatedScreenshot);
+    }
+    chrome.storage.local.remove('annotatedScreenshot');
     persistState();
-    markCaptured(els.btnScreenshot);
-    showScreenshotPreview();
-    updatePreviewBadges();
   }
 
-  // Backward compat: content.js writes capturedElement directly — import into bugjarState
+  // Backward compat: content.js writes capturedElement directly -- import into current step
   if (stored.capturedElement) {
-    state.elementInfo = stored.capturedElement;
-    chrome.storage.local.remove('capturedElement'); // consume it
+    var elStep = getCurrentStep();
+    if (!elStep) {
+      elStep = createStep();
+    }
+    if (elStep) {
+      elStep.elements.push(stored.capturedElement);
+    }
+    chrome.storage.local.remove('capturedElement');
     persistState();
-    markCaptured(els.btnElement);
-    showElementPreview(state.elementInfo);
-    updatePreviewBadges();
   }
+
+  // Auto-create first step if none exist (simple UX for quick bugs)
+  if (state.steps.length === 0) {
+    createStep();
+  }
+
+  // Render steps after all state is restored
+  renderSteps();
 
   // Update banner + version check
-  const currentVersion = chrome.runtime.getManifest().version;
+  var currentVersion = chrome.runtime.getManifest().version;
   if (stored.updateAvailable) {
-    const banner = document.createElement('div');
+    var banner = document.createElement('div');
     banner.className = 'update-banner';
-    const icon = document.createElement('span');
+    var icon = document.createElement('span');
     icon.textContent = '\u26A0\uFE0F';
     icon.style.marginRight = '6px';
     banner.appendChild(icon);
-    const text = document.createTextNode('v' + stored.updateAvailable.version + ' available (you have v' + currentVersion + ')  ');
+    var text = document.createTextNode('v' + stored.updateAvailable.version + ' available (you have v' + currentVersion + ')  ');
     banner.appendChild(text);
-    const link = document.createElement('a');
+    var link = document.createElement('a');
     link.href = stored.updateAvailable.url;
     link.target = '_blank';
     link.textContent = 'Download update';
     banner.appendChild(link);
     document.querySelector('.header').after(banner);
   } else {
-    // No update stored — trigger a check now and show "up to date" briefly
+    // No update stored -- trigger a check now
     chrome.runtime.sendMessage({ action: 'checkForUpdates' });
   }
 
@@ -1071,13 +1188,13 @@ chrome.storage.local.get(['annotatedScreenshot', 'capturedElement', 'updateAvail
   }
 
   // P3-20: Initialize i18n
-  const savedLang = stored.bugjarLang || detectLanguage();
+  var savedLang = stored.bugjarLang || detectLanguage();
   applyTranslations(savedLang);
 });
 
 // P3-20: Language selector click handlers
-document.querySelectorAll('.lang-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
+document.querySelectorAll('.lang-btn').forEach(function (btn) {
+  btn.addEventListener('click', function () {
     applyTranslations(btn.dataset.lang);
   });
 });
@@ -1085,11 +1202,11 @@ document.querySelectorAll('.lang-btn').forEach(btn => {
 // ============================================================================
 // Help panel
 // ============================================================================
-document.getElementById('btn-help').addEventListener('click', () => {
+document.getElementById('btn-help').addEventListener('click', function () {
   document.getElementById('help-panel').classList.toggle('visible');
 });
 
-document.getElementById('btn-help-dismiss').addEventListener('click', () => {
+document.getElementById('btn-help-dismiss').addEventListener('click', function () {
   document.getElementById('help-panel').classList.remove('visible');
   chrome.storage.local.set({ helpDismissed: true });
 });
@@ -1097,14 +1214,14 @@ document.getElementById('btn-help-dismiss').addEventListener('click', () => {
 // ============================================================================
 // Tab switching (Report / History)
 // ============================================================================
-document.getElementById('tab-report').addEventListener('click', () => {
+document.getElementById('tab-report').addEventListener('click', function () {
   document.getElementById('tab-report').classList.add('active');
   document.getElementById('tab-history').classList.remove('active');
   document.querySelector('.content').style.display = 'flex';
   document.getElementById('history-panel').style.display = 'none';
 });
 
-document.getElementById('tab-history').addEventListener('click', () => {
+document.getElementById('tab-history').addEventListener('click', function () {
   document.getElementById('tab-history').classList.add('active');
   document.getElementById('tab-report').classList.remove('active');
   document.querySelector('.content').style.display = 'none';
@@ -1116,25 +1233,25 @@ document.getElementById('tab-history').addEventListener('click', () => {
 // History functions
 // ============================================================================
 async function saveToHistory(metadata) {
-  const stored = await chrome.storage.local.get('reportHistory');
-  const history = stored.reportHistory || [];
-  history.unshift(metadata); // newest first
+  var stored = await chrome.storage.local.get('reportHistory');
+  var history = stored.reportHistory || [];
+  history.unshift(metadata);
   if (history.length > 50) history.pop();
   await chrome.storage.local.set({ reportHistory: history });
 }
 
 async function loadHistory() {
-  const stored = await chrome.storage.local.get('reportHistory');
-  const history = stored.reportHistory || [];
+  var stored = await chrome.storage.local.get('reportHistory');
+  var history = stored.reportHistory || [];
   renderHistory(history);
 }
 
 function renderHistory(history) {
-  const list = document.getElementById('history-list');
-  const empty = document.getElementById('history-empty');
-  const count = document.getElementById('history-count');
+  var list = document.getElementById('history-list');
+  var empty = document.getElementById('history-empty');
+  var count = document.getElementById('history-count');
 
-  list.replaceChildren(); // clear
+  list.replaceChildren();
   count.textContent = history.length + ' report' + (history.length !== 1 ? 's' : '');
 
   if (history.length === 0) {
@@ -1146,18 +1263,19 @@ function renderHistory(history) {
   empty.style.display = 'none';
   list.style.display = 'block';
 
-  for (const item of history) {
-    const itemEl = createElement('div', { className: 'history-item' });
+  for (var i = 0; i < history.length; i++) {
+    var item = history[i];
+    var itemEl = createElement('div', { className: 'history-item' });
 
-    // Header row: date + badges + delete button
-    const header = createElement('div', { className: 'history-item-header' });
+    // Header row
+    var header = createElement('div', { className: 'history-item-header' });
 
-    const dateText = new Date(item.date).toLocaleDateString(undefined, {
+    var dateText = new Date(item.date).toLocaleDateString(undefined, {
       month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
     });
     header.appendChild(createElement('span', { className: 'history-date', textContent: dateText }));
 
-    const badges = createElement('span', { className: 'history-badges' });
+    var badges = createElement('span', { className: 'history-badges' });
     if (item.priority) {
       badges.appendChild(createElement('span', {
         className: 'badge-priority ' + item.priority,
@@ -1172,19 +1290,17 @@ function renderHistory(history) {
     }
     header.appendChild(badges);
 
-    const deleteBtn = createElement('button', { className: 'history-delete', title: 'Delete', textContent: '\u00d7' });
-    const itemId = item.id;
-    deleteBtn.addEventListener('click', () => { deleteHistoryItem(itemId); });
+    var deleteBtn = createElement('button', { className: 'history-delete', title: 'Delete', textContent: '\u00d7' });
+    (function (itemId) {
+      deleteBtn.addEventListener('click', function () { deleteHistoryItem(itemId); });
+    })(item.id);
     header.appendChild(deleteBtn);
 
     itemEl.appendChild(header);
 
-    // URL
     if (item.url) {
       itemEl.appendChild(createElement('div', { className: 'history-url', textContent: item.url }));
     }
-
-    // Description
     if (item.description) {
       itemEl.appendChild(createElement('div', { className: 'history-description', textContent: item.description }));
     }
@@ -1194,8 +1310,8 @@ function renderHistory(history) {
 }
 
 async function deleteHistoryItem(id) {
-  const stored = await chrome.storage.local.get('reportHistory');
-  const history = (stored.reportHistory || []).filter(h => h.id !== id);
+  var stored = await chrome.storage.local.get('reportHistory');
+  var history = (stored.reportHistory || []).filter(function (h) { return h.id !== id; });
   await chrome.storage.local.set({ reportHistory: history });
   renderHistory(history);
 }
@@ -1205,7 +1321,6 @@ async function clearAllHistory() {
   renderHistory([]);
 }
 
-document.getElementById('btn-clear-history').addEventListener('click', () => {
+document.getElementById('btn-clear-history').addEventListener('click', function () {
   clearAllHistory();
 });
-
