@@ -75,6 +75,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return;
   }
 
+  // Reopen popup after element selection (Chrome 99+)
+  if (message.action === 'reopenPopup') {
+    try {
+      chrome.action.openPopup();
+    } catch (e) {
+      // Chrome < 99 or restricted context — user clicks icon manually
+    }
+    return;
+  }
+
   switch (message.action) {
     case 'captureScreenshot':
       handleCaptureScreenshot(sendResponse);

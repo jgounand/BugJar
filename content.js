@@ -449,12 +449,14 @@
     }
     showToast('Element captured: ' + toastLabel);
 
-    // Store in chrome.storage + notify
+    // Store in chrome.storage + notify + reopen popup
     chrome.storage.local.set({ capturedElement: selectedElementInfo });
     chrome.runtime.sendMessage({
       action: 'elementSelected',
       elementInfo: selectedElementInfo
     });
+    // Ask background to reopen the popup automatically
+    chrome.runtime.sendMessage({ action: 'reopenPopup' });
   }
 
   function activateInspector() {
