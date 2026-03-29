@@ -192,33 +192,73 @@
   };
 
   // =========================================================================
-  // 3. DOM INSPECTOR
+  // 3. DOM INSPECTOR (with full UX: banner, tooltip, persistent highlight)
   // =========================================================================
   let inspectorActive = false;
   let highlightOverlay = null;
+  let tooltipEl = null;
+  let bannerEl = null;
+  let selectedHighlight = null;
   let selectedElementInfo = null;
 
-  function createHighlightOverlay() {
-    if (highlightOverlay) return;
-    highlightOverlay = document.createElement('div');
-    highlightOverlay.id = '__km_feedback_overlay';
-    highlightOverlay.style.cssText = `
-      position: fixed;
-      pointer-events: none;
-      border: 2px solid #e94560;
-      background: rgba(233, 69, 96, 0.15);
-      z-index: 2147483647;
-      transition: all 0.1s ease;
-      display: none;
-    `;
-    document.body.appendChild(highlightOverlay);
+  function createInspectorUI() {
+    // Highlight overlay (follows mouse)
+    if (!highlightOverlay) {
+      highlightOverlay = document.createElement('div');
+      highlightOverlay.id = '__km_feedback_overlay';
+      highlightOverlay.style.cssText = 'position:fixed;pointer-events:none;border:2px solid #e94560;background:rgba(233,69,96,0.15);z-index:2147483646;transition:all 0.05s ease;display:none;border-radius:2px;';
+      document.body.appendChild(highlightOverlay);
+    }
+
+    // Tooltip (shows tag.class near cursor)
+    if (!tooltipEl) {
+      tooltipEl = document.createElement('div');
+      tooltipEl.id = '__km_feedback_tooltip';
+      tooltipEl.style.cssText = 'position:fixed;pointer-events:none;z-index:2147483647;background:#1a1a2e;color:#fff;padding:4px 8px;border-radius:4px;font:12px monospace;white-space:nowrap;display:none;box-shadow:0 2px 8px rgba(0,0,0,0.3);';
+      document.body.appendChild(tooltipEl);
+    }
+
+    // Top banner with instructions + cancel button
+    if (!bannerEl) {
+      bannerEl = document.createElement('div');
+      bannerEl.id = '__km_feedback_banner';
+      bannerEl.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:2147483647;background:#e94560;color:#fff;padding:10px 20px;font:14px system-ui,sans-serif;text-align:center;display:flex;align-items:center;justify-content:center;gap:16px;box-shadow:0 2px 12px rgba(0,0,0,0.3);';
+
+      const textSpan = document.createElement('span');
+      textSpan.textContent = 'Click on any element to select it';
+      bannerEl.appendChild(textSpan);
+
+      const cancelBtn = document.createElement('button');
+      cancelBtn.textContent = 'Cancel';
+      cancelBtn.style.cssText = 'background:#fff;color:#e94560;border:none;padding:6px 16px;border-radius:4px;cursor:pointer;font:13px system-ui;font-weight:600;';
+      cancelBtn.addEventListener('click', () => deactivateInspector());
+      bannerEl.appendChild(cancelBtn);
+
+      document.body.appendChild(bannerEl);
+    }
   }
 
-  function removeHighlightOverlay() {
-    if (highlightOverlay) {
-      highlightOverlay.remove();
-      highlightOverlay = null;
-    }
+  function removeInspectorUI() {
+    if (highlightOverlay) { highlightOverlay.remove(); highlightOverlay = null; }
+    if (tooltipEl) { tooltipEl.remove(); tooltipEl = null; }
+    if (bannerEl) { bannerEl.remove(); bannerEl = null; }
+  }
+
+  function showSelectedHighlight(rect, info) {
+    if (selectedHighlight) selectedHighlight.remove();
+
+    selectedHighlight = document.createElement('div');
+    selectedHighlight.id = '__km_feedback_selected';
+    selectedHighlight.style.cssText = 'position:fixed;pointer-events:none;z-index:2147483645;border:3px solid #27ae60;background:rgba(39,174,96,0.1);border-radius:2px;top:' + rect.top + 'px;left:' + rect.left + 'px;width:' + rect.width + 'px;height:' + rect.height + 'px;';
+
+    const label = document.createElement('div');
+    const tagText = info.tagName + (info.id ? '#' + info.id : '') + (info.classes.length ? '.' + info.classes.slice(0, 2).join('.') : '');
+    label.textContent = tagText + ' (' + rect.width + 'x' + rect.height + ')';
+    label.style.cssText = 'position:absolute;top:-24px;left:0;background:#27ae60;color:#fff;padding:2px 8px;border-radius:3px;font:11px monospace;white-space:nowrap;';
+    selectedHighlight.appendChild(label);
+
+    document.body.appendChild(selectedHighlight);
+    setTimeout(() => { if (selectedHighlight) { selectedHighlight.remove(); selectedHighlight = null; } }, 5000);
   }
 
   function getXPath(element) {
@@ -310,10 +350,15 @@
     };
   }
 
+  function isInspectorElement(el) {
+    if (!el || !el.id) return false;
+    return el.id.startsWith('__km_feedback_');
+  }
+
   function onInspectorMouseMove(e) {
     if (!inspectorActive || !highlightOverlay) return;
     const target = e.target;
-    if (target === highlightOverlay || target.id === '__km_feedback_overlay') return;
+    if (isInspectorElement(target)) return;
 
     const rect = target.getBoundingClientRect();
     highlightOverlay.style.display = 'block';
@@ -321,20 +366,42 @@
     highlightOverlay.style.left = rect.left + 'px';
     highlightOverlay.style.width = rect.width + 'px';
     highlightOverlay.style.height = rect.height + 'px';
+
+    // Show tooltip with element info near cursor
+    if (tooltipEl) {
+      const tag = target.tagName.toLowerCase();
+      const id = target.id ? '#' + target.id : '';
+      const cls = target.className && typeof target.className === 'string'
+        ? '.' + target.className.trim().split(/\s+/).slice(0, 2).join('.')
+        : '';
+      const size = Math.round(rect.width) + 'x' + Math.round(rect.height);
+      tooltipEl.textContent = tag + id + cls + '  ' + size;
+      tooltipEl.style.display = 'block';
+      tooltipEl.style.top = Math.min(e.clientY + 20, window.innerHeight - 30) + 'px';
+      tooltipEl.style.left = Math.min(e.clientX + 15, window.innerWidth - 200) + 'px';
+    }
   }
 
   function onInspectorClick(e) {
     if (!inspectorActive) return;
+    const target = e.target;
+    if (isInspectorElement(target)) return;
+
     e.preventDefault();
     e.stopPropagation();
 
-    const target = e.target;
-    if (target === highlightOverlay || target.id === '__km_feedback_overlay') return;
-
     selectedElementInfo = getElementInfo(target);
-    deactivateInspector();
+    const rect = target.getBoundingClientRect();
 
-    // Notify popup
+    // Show persistent green highlight on selected element
+    deactivateInspector();
+    showSelectedHighlight(
+      { top: rect.top, left: rect.left, width: Math.round(rect.width), height: Math.round(rect.height) },
+      selectedElementInfo
+    );
+
+    // Store in chrome.storage + notify
+    chrome.storage.local.set({ capturedElement: selectedElementInfo });
     chrome.runtime.sendMessage({
       action: 'elementSelected',
       elementInfo: selectedElementInfo
@@ -343,7 +410,7 @@
 
   function activateInspector() {
     inspectorActive = true;
-    createHighlightOverlay();
+    createInspectorUI();
     document.addEventListener('mousemove', onInspectorMouseMove, true);
     document.addEventListener('click', onInspectorClick, true);
     document.body.style.cursor = 'crosshair';
@@ -351,7 +418,7 @@
 
   function deactivateInspector() {
     inspectorActive = false;
-    removeHighlightOverlay();
+    removeInspectorUI();
     document.removeEventListener('mousemove', onInspectorMouseMove, true);
     document.removeEventListener('click', onInspectorClick, true);
     document.body.style.cursor = '';
