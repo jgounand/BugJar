@@ -12,28 +12,34 @@
     <span class="header-logo">🐞</span>
     <h1>BugJar</h1>
     <span class="header-version">v1.1.0</span>
-    <button class="clear-btn" id="btn-clear" title="Clear all captures">Clear</button>
+    <!-- P3-20: Language selector -->
+    <div class="lang-selector">
+      <button class="lang-btn active" data-lang="en" title="English">EN</button>
+      <button class="lang-btn" data-lang="fr" title="Français">FR</button>
+      <button class="lang-btn" data-lang="es" title="Español">ES</button>
+    </div>
+    <button class="clear-btn" id="btn-clear" title="Clear all captures" data-i18n="clear">Clear</button>
   </div>
 
   <!-- Main content -->
   <div class="content">
     <!-- Description -->
     <div class="form-group">
-      <label for="description">Description</label>
-      <textarea id="description" placeholder="Describe the issue..."></textarea>
+      <label for="description" data-i18n="description">Description</label>
+      <textarea id="description" placeholder="Describe the issue..." data-i18n-placeholder="descriptionPlaceholder"></textarea>
     </div>
 
     <!-- Steps to reproduce -->
     <div class="form-group">
-      <label for="steps">Steps to reproduce</label>
-      <textarea id="steps" placeholder="1. Go to...&#10;2. Click on...&#10;3. See error..."></textarea>
+      <label for="steps" data-i18n="steps">Steps to reproduce</label>
+      <textarea id="steps" placeholder="1. Go to...&#10;2. Click on...&#10;3. See error..." data-i18n-placeholder="stepsPlaceholder"></textarea>
     </div>
 
     <!-- Category + Priority -->
     <div class="form-row">
       <div class="form-group">
-        <label for="category">Category</label>
-        <select id="category">
+        <label for="category" data-i18n="category">Category</label>
+        <select id="category" data-i18n-options='{"bug":"catBug","feature":"catFeature","question":"catQuestion","other":"catOther"}'>
           <option value="bug">Bug</option>
           <option value="feature">Feature Request</option>
           <option value="question">Question</option>
@@ -41,8 +47,8 @@
         </select>
       </div>
       <div class="form-group">
-        <label for="priority">Priority</label>
-        <select id="priority">
+        <label for="priority" data-i18n="priority">Priority</label>
+        <select id="priority" data-i18n-options='{"low":"priLow","medium":"priMedium","high":"priHigh","critical":"priCritical"}'>
           <option value="low">Low</option>
           <option value="medium" selected>Medium</option>
           <option value="high">High</option>
@@ -53,26 +59,26 @@
 
     <!-- Capture buttons -->
     <div class="capture-section">
-      <label>Captures</label>
-      <button class="capture-all-btn" id="btn-capture-all">
+      <label data-i18n="captures">Captures</label>
+      <button class="capture-all-btn" id="btn-capture-all" data-i18n="captureAll">
         Capture All (Screenshot + Console + Network)
       </button>
       <div class="capture-buttons">
         <button class="capture-btn" id="btn-screenshot">
           <span class="icon">📸</span>
-          <span class="label">Screenshot</span>
+          <span class="label" data-i18n="screenshot">Screenshot</span>
         </button>
         <button class="capture-btn" id="btn-element">
           <span class="icon">🖱️</span>
-          <span class="label">Select Element</span>
+          <span class="label" data-i18n="selectElement">Select Element</span>
         </button>
         <button class="capture-btn" id="btn-console">
           <span class="icon">📋</span>
-          <span class="label">Console</span>
+          <span class="label" data-i18n="console">Console</span>
         </button>
         <button class="capture-btn" id="btn-network">
           <span class="icon">🌐</span>
-          <span class="label">Network</span>
+          <span class="label" data-i18n="network">Network</span>
         </button>
       </div>
     </div>
@@ -91,12 +97,13 @@
     <div class="element-preview" id="element-preview"></div>
 
     <!-- Generate report -->
-    <button class="generate-btn" id="btn-generate">Generate Report</button>
+    <button class="generate-btn" id="btn-generate" data-i18n="generate">Generate Report</button>
   </div>
 
   <!-- Status bar -->
   <div class="status-bar" id="status-bar">Ready</div>
 
+  <script src="../i18n.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

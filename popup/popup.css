@@ -2,6 +2,59 @@
    BugJar — Popup Styles
    ========================================================================== */
 
+/* P3-21: CSS custom properties for dark mode support */
+:root {
+  --bg: #f5f5f8;
+  --bg-secondary: #ffffff;
+  --text: #333333;
+  --text-secondary: #666666;
+  --text-muted: #888888;
+  --border: #dddddd;
+  --border-light: #e0e0e0;
+  --input-bg: #ffffff;
+  --header-bg: #1a1a2e;
+  --accent: #e94560;
+  --accent-hover: #d63851;
+  --success: #27ae60;
+  --success-bg: #f0faf4;
+  --success-border: #c8e6cf;
+  --badge-bg: #eef9f1;
+  --capture-hover-bg: #fff5f7;
+  --update-bg: #fff8e1;
+  --update-text: #795548;
+  --update-border: #ffe082;
+  --status-bg: #ffffff;
+  --status-border: #eeeeee;
+  --scrollbar: #cccccc;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a1a2e;
+    --bg-secondary: #16213e;
+    --text: #e0e0e0;
+    --text-secondary: #a0a0a0;
+    --text-muted: #777777;
+    --border: #333355;
+    --border-light: #2a2a4a;
+    --input-bg: #16213e;
+    --header-bg: #0f0f1a;
+    --accent: #e94560;
+    --accent-hover: #d63851;
+    --success: #27ae60;
+    --success-bg: #1a2e1a;
+    --success-border: #2a4a2a;
+    --badge-bg: #1a2e1a;
+    --capture-hover-bg: #2e1a22;
+    --update-bg: #2e2a1a;
+    --update-text: #d4c4a0;
+    --update-border: #4a4020;
+    --status-bg: #16213e;
+    --status-border: #333355;
+    --scrollbar: #444466;
+  }
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -14,13 +67,13 @@ body {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
     Oxygen, Ubuntu, Cantarell, sans-serif;
   font-size: 13px;
-  color: #333;
-  background: #f5f5f8;
+  color: var(--text);
+  background: var(--bg);
 }
 
 /* -- Header ---------------------------------------------------------------- */
 .header {
-  background: #1a1a2e;
+  background: var(--header-bg);
   color: #fff;
   padding: 14px 16px;
   display: flex;
@@ -40,7 +93,6 @@ body {
 }
 
 .header-version {
-  margin-left: auto;
   font-size: 10px;
   opacity: 0.5;
 }
@@ -68,15 +120,15 @@ body {
 /* -- Update banner --------------------------------------------------------- */
 .update-banner {
   padding: 8px 16px;
-  background: #fff8e1;
-  color: #795548;
+  background: var(--update-bg);
+  color: var(--update-text);
   font-size: 12px;
   text-align: center;
-  border-bottom: 1px solid #ffe082;
+  border-bottom: 1px solid var(--update-border);
 }
 
 .update-banner a {
-  color: #e94560;
+  color: var(--accent);
   font-weight: 600;
   text-decoration: none;
   margin-left: 4px;
@@ -104,7 +156,7 @@ body {
 .form-group label {
   font-size: 11px;
   font-weight: 600;
-  color: #666;
+  color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -113,29 +165,31 @@ textarea {
   width: 100%;
   min-height: 80px;
   padding: 10px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--border);
   border-radius: 6px;
   font-family: inherit;
   font-size: 13px;
   resize: vertical;
   transition: border-color 0.2s;
-  background: #fff;
+  background: var(--input-bg);
+  color: var(--text);
 }
 
 textarea:focus {
   outline: none;
-  border-color: #e94560;
+  border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(233, 69, 96, 0.1);
 }
 
 select {
   width: 100%;
   padding: 8px 10px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--border);
   border-radius: 6px;
   font-family: inherit;
   font-size: 13px;
-  background: #fff;
+  background: var(--input-bg);
+  color: var(--text);
   cursor: pointer;
   appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' fill='none' stroke='%23666' stroke-width='1.5'/%3E%3C/svg%3E");
@@ -145,7 +199,7 @@ select {
 
 select:focus {
   outline: none;
-  border-color: #e94560;
+  border-color: var(--accent);
 }
 
 /* -- Row of selects -------------------------------------------------------- */
@@ -168,7 +222,7 @@ select:focus {
 .capture-section label {
   font-size: 11px;
   font-weight: 600;
-  color: #666;
+  color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -179,7 +233,7 @@ select:focus {
   padding: 10px 12px;
   border: none;
   border-radius: 6px;
-  background: #e94560;
+  background: var(--accent);
   color: #fff;
   font-family: inherit;
   font-size: 13px;
@@ -191,7 +245,7 @@ select:focus {
 }
 
 .capture-all-btn:hover {
-  background: #d63851;
+  background: var(--accent-hover);
 }
 
 .capture-all-btn:disabled {
@@ -210,26 +264,26 @@ select:focus {
   align-items: center;
   gap: 6px;
   padding: 10px 12px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--border);
   border-radius: 6px;
-  background: #fff;
+  background: var(--bg-secondary);
   cursor: pointer;
   font-family: inherit;
   font-size: 12px;
-  color: #444;
+  color: var(--text);
   transition: all 0.2s;
 }
 
 .capture-btn:hover {
-  border-color: #e94560;
-  color: #e94560;
-  background: #fff5f7;
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--capture-hover-bg);
 }
 
 .capture-btn.captured {
-  border-color: #27ae60;
-  background: #f0faf4;
-  color: #27ae60;
+  border-color: var(--success);
+  background: var(--success-bg);
+  color: var(--success);
 }
 
 .capture-btn.loading {
@@ -257,9 +311,9 @@ select:focus {
   flex-wrap: wrap;
   gap: 6px;
   padding: 10px;
-  background: #fff;
+  background: var(--bg-secondary);
   border-radius: 6px;
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--border-light);
 }
 
 .captured-preview.has-data {
@@ -274,9 +328,9 @@ select:focus {
   border-radius: 12px;
   font-size: 11px;
   font-weight: 500;
-  background: #eef9f1;
-  color: #27ae60;
-  border: 1px solid #c8e6cf;
+  background: var(--badge-bg);
+  color: var(--success);
+  border: 1px solid var(--success-border);
 }
 
 .badge .badge-icon {
@@ -288,8 +342,8 @@ select:focus {
   display: none;
   border-radius: 6px;
   overflow: hidden;
-  border: 1px solid #ddd;
-  background: #fff;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
 }
 
 .screenshot-preview.visible {
@@ -306,12 +360,12 @@ select:focus {
 .element-preview {
   display: none;
   padding: 10px;
-  background: #fff;
+  background: var(--bg-secondary);
   border-radius: 6px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--border);
   font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
   font-size: 11px;
-  color: #555;
+  color: var(--text-secondary);
   word-break: break-all;
 }
 
@@ -320,7 +374,7 @@ select:focus {
 }
 
 .element-preview .el-tag {
-  color: #e94560;
+  color: var(--accent);
   font-weight: 600;
 }
 
@@ -342,7 +396,7 @@ select:focus {
   padding: 12px;
   border: none;
   border-radius: 6px;
-  background: #e94560;
+  background: var(--accent);
   color: #fff;
   font-family: inherit;
   font-size: 14px;
@@ -353,7 +407,7 @@ select:focus {
 }
 
 .generate-btn:hover {
-  background: #d63851;
+  background: var(--accent-hover);
 }
 
 .generate-btn:disabled {
@@ -365,10 +419,10 @@ select:focus {
 .status-bar {
   padding: 8px 16px;
   font-size: 11px;
-  color: #888;
+  color: var(--text-muted);
   text-align: center;
-  border-top: 1px solid #eee;
-  background: #fff;
+  border-top: 1px solid var(--status-border);
+  background: var(--status-bg);
   min-height: 30px;
   display: flex;
   align-items: center;
@@ -393,6 +447,37 @@ select:focus {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #ccc;
+  background: var(--scrollbar);
   border-radius: 3px;
+}
+
+/* -- Language selector (P3-20) --------------------------------------------- */
+.lang-selector {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.lang-btn {
+  padding: 2px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
+  font-family: inherit;
+  font-size: 9px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.lang-btn:hover {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.lang-btn.active {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.5);
 }

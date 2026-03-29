@@ -47,6 +47,19 @@ function isNewerVersion(latest, current) {
 }
 
 // ---------------------------------------------------------------------------
+// P3-23: Keyboard shortcut handler
+// ---------------------------------------------------------------------------
+chrome.commands.onCommand.addListener((command) => {
+  if (command === 'capture-all') {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0]) {
+        chrome.tabs.sendMessage(tabs[0].id, { action: 'triggerCaptureAll' });
+      }
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Message handler
 // ---------------------------------------------------------------------------
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {

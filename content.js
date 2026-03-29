@@ -27,7 +27,7 @@
 
   function captureConsole(level) {
     return function (...args) {
-      consoleLogs.push({
+      const entry = {
         level,
         timestamp: new Date().toISOString(),
         message: args.map(arg => {
@@ -38,7 +38,14 @@
             return String(arg);
           }
         }).join(' ')
-      });
+      };
+
+      // P2-11: Capture stack trace for errors
+      if (level === 'error') {
+        try { throw new Error(); } catch(e) { entry.stack = e.stack; }
+      }
+
+      consoleLogs.push(entry);
 
       // Keep buffer bounded
       if (consoleLogs.length > MAX_CONSOLE_ENTRIES) {
@@ -132,6 +139,14 @@
         } catch {
           entry.responseSize = 0;
         }
+        // P2-12: Capture response body for failed requests (4xx/5xx)
+        if (xhr.status >= 400) {
+          try {
+            entry.responseBody = (xhr.responseText || '').substring(0, 500);
+          } catch {
+            entry.responseBody = '';
+          }
+        }
         entry.timestamp = new Date().toISOString();
         networkLogs.push(entry);
         if (networkLogs.length > MAX_NETWORK_ENTRIES) networkLogs.shift();
@@ -187,6 +202,17 @@
         entry.responseSize = blob.size;
       } catch {
         entry.responseSize = 0;
+      }
+
+      // P2-12: Capture response body for failed requests (4xx/5xx)
+      if (response.status >= 400) {
+        try {
+          const clone2 = response.clone();
+          const text = await clone2.text();
+          entry.responseBody = text.substring(0, 500);
+        } catch {
+          entry.responseBody = '';
+        }
       }
 
       networkLogs.push(entry);
@@ -458,7 +484,65 @@
   }
 
   // =========================================================================
-  // 5. MESSAGE HANDLER
+  // 5. FRAMEWORK DETECTION (P2-13)
+  // =========================================================================
+  function detectFramework() {
+    const info = { name: 'Unknown', version: '' };
+
+    // Angular
+    if (window.ng && window.ng.getComponent) {
+      info.name = 'Angular';
+      const vEl = document.querySelector('[ng-version]');
+      if (vEl) info.version = vEl.getAttribute('ng-version');
+    } else if (document.querySelector('[ng-version]')) {
+      info.name = 'Angular';
+      info.version = document.querySelector('[ng-version]').getAttribute('ng-version');
+    }
+    // React
+    else if (window.__REACT_DEVTOOLS_GLOBAL_HOOK__ || document.querySelector('[data-reactroot]')) {
+      info.name = 'React';
+      if (window.React && window.React.version) info.version = window.React.version;
+    }
+    // Vue
+    else if (window.__VUE__ || document.querySelector('[data-v-]')) {
+      info.name = 'Vue';
+      if (window.Vue && window.Vue.version) info.version = window.Vue.version;
+    }
+    // jQuery
+    if (window.jQuery) {
+      info.jquery = window.jQuery.fn.jquery;
+    }
+
+    return info;
+  }
+
+  // =========================================================================
+  // 6. ROUTE/URL HISTORY — SPA navigation tracking (P2-16)
+  // =========================================================================
+  const navigationHistory = [];
+  const MAX_NAV_ENTRIES = 20;
+
+  const originalPushState = history.pushState;
+  history.pushState = function(...args) {
+    navigationHistory.push({ url: args[2] || location.href, timestamp: new Date().toISOString(), type: 'pushState' });
+    if (navigationHistory.length > MAX_NAV_ENTRIES) navigationHistory.shift();
+    return originalPushState.apply(this, args);
+  };
+
+  const originalReplaceState = history.replaceState;
+  history.replaceState = function(...args) {
+    navigationHistory.push({ url: args[2] || location.href, timestamp: new Date().toISOString(), type: 'replaceState' });
+    if (navigationHistory.length > MAX_NAV_ENTRIES) navigationHistory.shift();
+    return originalReplaceState.apply(this, args);
+  };
+
+  window.addEventListener('popstate', () => {
+    navigationHistory.push({ url: location.href, timestamp: new Date().toISOString(), type: 'popstate' });
+    if (navigationHistory.length > MAX_NAV_ENTRIES) navigationHistory.shift();
+  });
+
+  // =========================================================================
+  // 7. MESSAGE HANDLER
   // =========================================================================
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     switch (message.action) {
@@ -491,6 +575,26 @@
           success: true,
           elementInfo: selectedElementInfo
         });
+        break;
+
+      case 'getFrameworkInfo':
+        sendResponse({ success: true, framework: detectFramework() });
+        break;
+
+      case 'getStorageInfo':
+        try {
+          const storageInfo = {
+            localStorage: Object.keys(localStorage).map(k => ({ key: k, size: localStorage.getItem(k).length })),
+            sessionStorage: Object.keys(sessionStorage).map(k => ({ key: k, size: sessionStorage.getItem(k).length }))
+          };
+          sendResponse({ success: true, storage: storageInfo });
+        } catch(e) {
+          sendResponse({ success: false, error: e.message });
+        }
+        break;
+
+      case 'getNavigationHistory':
+        sendResponse({ success: true, history: navigationHistory.slice() });
         break;
 
       case 'ping':

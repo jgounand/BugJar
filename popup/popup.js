@@ -16,12 +16,16 @@
 // ============================================================================
 // State
 // ============================================================================
+const MAX_SCREENSHOTS = 5;
 const state = {
-  screenshot: null,        // data URL (annotated or raw)
+  screenshots: [],         // array of data URLs (annotated or raw) — P3-19
   consoleLogs: null,       // array of log entries
   networkLogs: null,       // array of network entries
   elementInfo: null,       // selected element details
-  tabInfo: null            // active tab URL/title
+  tabInfo: null,           // active tab URL/title
+  frameworkInfo: null,     // P2-13: detected framework
+  storageInfo: null,       // P2-15: localStorage/sessionStorage keys
+  navigationHistory: null  // P2-16: SPA route history
 };
 
 // ============================================================================
@@ -110,7 +114,7 @@ function createElement(tag, attrs, ...children) {
 
 function updatePreviewBadges() {
   const badges = [];
-  if (state.screenshot) badges.push({ icon: '\u{1F4F8}', text: 'Screenshot' });
+  if (state.screenshots.length > 0) badges.push({ icon: '\u{1F4F8}', text: state.screenshots.length === 1 ? 'Screenshot' : `${state.screenshots.length} screenshots` });
   if (state.elementInfo) badges.push({ icon: '\u{1F5B1}\uFE0F', text: 'Element' });
   if (state.consoleLogs) badges.push({ icon: '\u{1F4CB}', text: `Console (${state.consoleLogs.length})` });
   if (state.networkLogs) badges.push({ icon: '\u{1F310}', text: `Network (${state.networkLogs.length})` });
@@ -192,13 +196,13 @@ els.btnScreenshot.addEventListener('click', async () => {
     }
 
     // Store raw screenshot, then open annotation editor
-    state.screenshot = response.dataUrl;
+    const dataUrl = response.dataUrl;
 
     setStatus('Opening annotation editor...');
 
     chrome.runtime.sendMessage({
       action: 'openAnnotationEditor',
-      dataUrl: response.dataUrl
+      dataUrl: dataUrl
     }, (res) => {
       if (res && res.success) {
         setStatus('Annotate the screenshot in the new tab', 'success');
@@ -206,9 +210,11 @@ els.btnScreenshot.addEventListener('click', async () => {
         // will save results to chrome.storage.local and the popup can pick
         // them up next time it opens.
       } else {
-        // Even without annotation, we still have the raw screenshot
+        // Even without annotation, we still have the raw screenshot — P3-19: push to array
+        if (state.screenshots.length >= MAX_SCREENSHOTS) state.screenshots.shift();
+        state.screenshots.push(dataUrl);
         markCaptured(els.btnScreenshot);
-        showScreenshotPreview(state.screenshot);
+        showScreenshotPreview();
         updatePreviewBadges();
         setStatus('Screenshot captured (annotation unavailable)', 'success');
       }
@@ -216,9 +222,29 @@ els.btnScreenshot.addEventListener('click', async () => {
   });
 });
 
-function showScreenshotPreview(dataUrl) {
-  els.screenshotImg.src = dataUrl;
+function showScreenshotPreview() {
+  if (state.screenshots.length === 0) {
+    els.screenshotPreview.classList.remove('visible');
+    return;
+  }
+  // Show the latest screenshot thumbnail
+  els.screenshotImg.src = state.screenshots[state.screenshots.length - 1];
   els.screenshotPreview.classList.add('visible');
+  // Show count badge if more than one
+  let countBadge = els.screenshotPreview.querySelector('.screenshot-count');
+  if (state.screenshots.length > 1) {
+    if (!countBadge) {
+      countBadge = createElement('div', {
+        className: 'screenshot-count',
+        style: { position: 'absolute', top: '6px', right: '6px', background: '#e94560', color: '#fff', borderRadius: '10px', padding: '2px 8px', fontSize: '11px', fontWeight: '600' }
+      });
+      els.screenshotPreview.style.position = 'relative';
+      els.screenshotPreview.appendChild(countBadge);
+    }
+    countBadge.textContent = state.screenshots.length + ' screenshots';
+  } else if (countBadge) {
+    countBadge.remove();
+  }
 }
 
 // ============================================================================
@@ -366,14 +392,15 @@ els.btnNetwork.addEventListener('click', async () => {
 els.btnCaptureAll.addEventListener('click', async () => {
   els.btnCaptureAll.disabled = true;
 
-  // 1/3 — Screenshot (raw, no annotation editor)
-  setStatus('Capturing 1/3 — Screenshot...');
+  // 1/6 — Screenshot (raw, no annotation editor) — P3-19: push to array
+  setStatus('Capturing 1/6 — Screenshot...');
   const screenshotOk = await new Promise((resolve) => {
     chrome.runtime.sendMessage({ action: 'captureScreenshot' }, (response) => {
       if (response && response.success) {
-        state.screenshot = response.dataUrl;
+        if (state.screenshots.length >= MAX_SCREENSHOTS) state.screenshots.shift();
+        state.screenshots.push(response.dataUrl);
         markCaptured(els.btnScreenshot);
-        showScreenshotPreview(state.screenshot);
+        showScreenshotPreview();
         updatePreviewBadges();
         resolve(true);
       } else {
@@ -385,8 +412,8 @@ els.btnCaptureAll.addEventListener('click', async () => {
     setStatus('Screenshot failed, continuing...', 'error');
   }
 
-  // 2/3 — Console logs
-  setStatus('Capturing 2/3 — Console...');
+  // 2/6 — Console logs
+  setStatus('Capturing 2/6 — Console...');
   const tabId = await ensureContentScript();
   if (tabId) {
     await new Promise((resolve) => {
@@ -400,14 +427,47 @@ els.btnCaptureAll.addEventListener('click', async () => {
       });
     });
 
-    // 3/3 — Network logs
-    setStatus('Capturing 3/3 — Network...');
+    // 3/6 — Network logs
+    setStatus('Capturing 3/6 — Network...');
     await new Promise((resolve) => {
       chrome.tabs.sendMessage(tabId, { action: 'getNetworkLogs' }, (response) => {
         if (response && response.success) {
           state.networkLogs = response.logs;
           markCaptured(els.btnNetwork);
           updatePreviewBadges();
+        }
+        resolve();
+      });
+    });
+
+    // 4/6 — Framework info (P2-13)
+    setStatus('Capturing 4/6 — Framework...');
+    await new Promise((resolve) => {
+      chrome.tabs.sendMessage(tabId, { action: 'getFrameworkInfo' }, (response) => {
+        if (response && response.success) {
+          state.frameworkInfo = response.framework;
+        }
+        resolve();
+      });
+    });
+
+    // 5/6 — Storage info (P2-15)
+    setStatus('Capturing 5/6 — Storage...');
+    await new Promise((resolve) => {
+      chrome.tabs.sendMessage(tabId, { action: 'getStorageInfo' }, (response) => {
+        if (response && response.success) {
+          state.storageInfo = response.storage;
+        }
+        resolve();
+      });
+    });
+
+    // 6/6 — Navigation history (P2-16)
+    setStatus('Capturing 6/6 — Navigation...');
+    await new Promise((resolve) => {
+      chrome.tabs.sendMessage(tabId, { action: 'getNavigationHistory' }, (response) => {
+        if (response && response.success) {
+          state.navigationHistory = response.history;
         }
         resolve();
       });
@@ -431,11 +491,14 @@ els.btnCaptureAll.addEventListener('click', async () => {
 // ============================================================================
 els.btnClear.addEventListener('click', () => {
   // Reset state
-  state.screenshot = null;
+  state.screenshots = [];
   state.consoleLogs = null;
   state.networkLogs = null;
   state.elementInfo = null;
   state.tabInfo = null;
+  state.frameworkInfo = null;
+  state.storageInfo = null;
+  state.navigationHistory = null;
 
   // Clear storage
   chrome.storage.local.remove(['annotatedScreenshot', 'capturedElement']);
@@ -463,18 +526,50 @@ els.btnClear.addEventListener('click', () => {
 // ============================================================================
 // Generate Report
 // ============================================================================
-els.btnGenerate.addEventListener('click', () => {
+els.btnGenerate.addEventListener('click', async () => {
   setStatus('Generating report...');
 
   // Gather tab info
-  chrome.runtime.sendMessage({ action: 'getActiveTabInfo' }, (res) => {
-    if (res && res.success) {
-      state.tabInfo = res.tabInfo;
-    }
+  await new Promise((resolve) => {
+    chrome.runtime.sendMessage({ action: 'getActiveTabInfo' }, (res) => {
+      if (res && res.success) state.tabInfo = res.tabInfo;
+      resolve();
+    });
+  });
 
+  // P2-13, P2-15, P2-16: Fetch framework, storage, navigation if not already captured
+  const tabId = await ensureContentScript();
+  if (tabId) {
+    if (!state.frameworkInfo) {
+      await new Promise((resolve) => {
+        chrome.tabs.sendMessage(tabId, { action: 'getFrameworkInfo' }, (response) => {
+          if (response && response.success) state.frameworkInfo = response.framework;
+          resolve();
+        });
+      });
+    }
+    if (!state.storageInfo) {
+      await new Promise((resolve) => {
+        chrome.tabs.sendMessage(tabId, { action: 'getStorageInfo' }, (response) => {
+          if (response && response.success) state.storageInfo = response.storage;
+          resolve();
+        });
+      });
+    }
+    if (!state.navigationHistory) {
+      await new Promise((resolve) => {
+        chrome.tabs.sendMessage(tabId, { action: 'getNavigationHistory' }, (response) => {
+          if (response && response.success) state.navigationHistory = response.history;
+          resolve();
+        });
+      });
+    }
+  }
+
+  {
     // Preview summary before download
     const parts = [];
-    if (state.screenshot) parts.push('1 screenshot');
+    if (state.screenshots.length > 0) parts.push(state.screenshots.length + ' screenshot' + (state.screenshots.length !== 1 ? 's' : ''));
     if (state.consoleLogs) {
       const errCount = state.consoleLogs.filter(l => l.level === 'error').length;
       parts.push(errCount + ' error' + (errCount !== 1 ? 's' : ''));
@@ -485,7 +580,7 @@ els.btnGenerate.addEventListener('click', () => {
     setStatus('Report: ' + summary + ' \u2192 Downloading...');
 
     buildAndDownloadReport();
-  });
+  }
 });
 
 function parseUserAgent(ua) {
@@ -614,6 +709,13 @@ function buildReportMarkdown(ctx) {
     lines.push(`- **Language:** ${environment.language}`);
     lines.push(`- **Timezone:** ${environment.timezone}`);
     lines.push(`- **Touch:** ${environment.touch}`);
+    // P2-13: Framework info
+    if (state.frameworkInfo) {
+      const fw = state.frameworkInfo;
+      const fwStr = fw.name !== 'Unknown' ? `${fw.name}${fw.version ? ' ' + fw.version : ''}` : 'Not detected';
+      lines.push(`- **Framework:** ${fwStr}`);
+      if (fw.jquery) lines.push(`- **jQuery:** ${fw.jquery}`);
+    }
     lines.push('');
   }
 
@@ -631,15 +733,18 @@ function buildReportMarkdown(ctx) {
     lines.push('');
   }
 
-  // Screenshot — saved as separate file, referenced by filename
-  if (state.screenshot) {
-    const imgExt = state.screenshot.startsWith('data:image/jpeg') ? 'jpg' : 'png';
-    const imgMime = state.screenshot.startsWith('data:image/jpeg') ? 'image/jpeg' : 'image/png';
-    const imgFilename = `feedback-${dateStr}-screenshot.${imgExt}`;
-    downloadFile(imgFilename, dataUrlToBlob(state.screenshot), imgMime);
-    lines.push('## Screenshot');
+  // Screenshots — P3-19: multi-screenshots saved as separate files
+  if (state.screenshots.length > 0) {
+    lines.push('## Screenshots');
     lines.push('');
-    lines.push(`![Screenshot](${imgFilename})`);
+    state.screenshots.forEach((ss, idx) => {
+      const imgExt = ss.startsWith('data:image/jpeg') ? 'jpg' : 'png';
+      const imgMime = ss.startsWith('data:image/jpeg') ? 'image/jpeg' : 'image/png';
+      const suffix = state.screenshots.length === 1 ? '' : `-${idx + 1}`;
+      const imgFilename = `feedback-${dateStr}-screenshot${suffix}.${imgExt}`;
+      downloadFile(imgFilename, dataUrlToBlob(ss), imgMime);
+      lines.push(`![Screenshot ${idx + 1}](${imgFilename})`);
+    });
     lines.push('');
   }
 
@@ -683,6 +788,13 @@ function buildReportMarkdown(ctx) {
       const level = `[${(log.level || 'log').toUpperCase()}]`;
       const msg = Array.isArray(log.args) ? log.args.join(' ') : (log.message || '');
       lines.push(`${ts} ${level} ${msg}`);
+      // P2-11: Include stack trace for errors
+      if (log.stack && log.level === 'error') {
+        const stackLines = log.stack.split('\n').slice(2, 6); // skip Error + captureConsole frames
+        for (const sl of stackLines) {
+          lines.push(`  ${sl.trim()}`);
+        }
+      }
     }
     lines.push('```');
     lines.push('');
@@ -703,6 +815,10 @@ function buildReportMarkdown(ctx) {
       lines.push('|--------|--------|-----|----------|');
       for (const req of failed) {
         lines.push(`| ${req.method} | ${req.status || 'ERR'} | ${req.url} | ${req.duration || '?'}ms |`);
+        // P2-12: Include response body for failed requests
+        if (req.responseBody) {
+          lines.push(`> Response: ${req.responseBody}`);
+        }
       }
       lines.push('');
     }
@@ -713,6 +829,49 @@ function buildReportMarkdown(ctx) {
     lines.push('|--------|--------|-----|----------|');
     for (const req of state.networkLogs) {
       lines.push(`| ${req.method} | ${req.status || '?'} | ${req.url} | ${req.duration || '?'}ms |`);
+    }
+    lines.push('');
+  }
+
+  // P2-15: Storage section
+  if (state.storageInfo) {
+    const ls = state.storageInfo.localStorage || [];
+    const ss = state.storageInfo.sessionStorage || [];
+    if (ls.length > 0 || ss.length > 0) {
+      lines.push('## Storage');
+      lines.push('');
+      if (ls.length > 0) {
+        lines.push('### localStorage');
+        lines.push('');
+        lines.push('| Key | Size (chars) |');
+        lines.push('|-----|-------------|');
+        for (const item of ls) {
+          lines.push(`| ${item.key} | ${item.size} |`);
+        }
+        lines.push('');
+      }
+      if (ss.length > 0) {
+        lines.push('### sessionStorage');
+        lines.push('');
+        lines.push('| Key | Size (chars) |');
+        lines.push('|-----|-------------|');
+        for (const item of ss) {
+          lines.push(`| ${item.key} | ${item.size} |`);
+        }
+        lines.push('');
+      }
+    }
+  }
+
+  // P2-16: Navigation History
+  if (state.navigationHistory && state.navigationHistory.length > 0) {
+    lines.push('## Navigation History');
+    lines.push('');
+    lines.push('| Time | Type | URL |');
+    lines.push('|------|------|-----|');
+    for (const nav of state.navigationHistory) {
+      const ts = nav.timestamp ? new Date(nav.timestamp).toISOString().slice(11, 23) : '';
+      lines.push(`| ${ts} | ${nav.type} | ${nav.url} |`);
     }
     lines.push('');
   }
@@ -741,11 +900,13 @@ document.querySelector('.header-version').textContent = 'v' + chrome.runtime.get
 // ============================================================================
 // Restore persisted data on popup open (CRIT-2 + update banner)
 // ============================================================================
-chrome.storage.local.get(['annotatedScreenshot', 'capturedElement', 'updateAvailable'], (stored) => {
+chrome.storage.local.get(['annotatedScreenshot', 'capturedElement', 'updateAvailable', 'bugjarLang'], (stored) => {
   if (stored.annotatedScreenshot) {
-    state.screenshot = stored.annotatedScreenshot;
+    // P3-19: push to screenshots array
+    if (state.screenshots.length >= MAX_SCREENSHOTS) state.screenshots.shift();
+    state.screenshots.push(stored.annotatedScreenshot);
     markCaptured(els.btnScreenshot);
-    showScreenshotPreview(state.screenshot);
+    showScreenshotPreview();
     updatePreviewBadges();
   }
   if (stored.capturedElement) {
@@ -766,5 +927,16 @@ chrome.storage.local.get(['annotatedScreenshot', 'capturedElement', 'updateAvail
     banner.appendChild(link);
     document.querySelector('.header').after(banner);
   }
+
+  // P3-20: Initialize i18n
+  const savedLang = stored.bugjarLang || detectLanguage();
+  applyTranslations(savedLang);
+});
+
+// P3-20: Language selector click handlers
+document.querySelectorAll('.lang-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    applyTranslations(btn.dataset.lang);
+  });
 });
 
