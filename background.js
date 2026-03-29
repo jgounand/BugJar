@@ -70,6 +70,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return;
   }
 
+  if (message.action === 'checkForUpdates') {
+    checkForUpdates();
+    return;
+  }
+
   switch (message.action) {
     case 'captureScreenshot':
       handleCaptureScreenshot(sendResponse);

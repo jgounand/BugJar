@@ -1043,17 +1043,26 @@ chrome.storage.local.get(['annotatedScreenshot', 'capturedElement', 'updateAvail
     updatePreviewBadges();
   }
 
+  // Update banner + version check
+  const currentVersion = chrome.runtime.getManifest().version;
   if (stored.updateAvailable) {
     const banner = document.createElement('div');
     banner.className = 'update-banner';
-    const text = document.createTextNode(`Update v${stored.updateAvailable.version} available! `);
+    const icon = document.createElement('span');
+    icon.textContent = '\u26A0\uFE0F';
+    icon.style.marginRight = '6px';
+    banner.appendChild(icon);
+    const text = document.createTextNode('v' + stored.updateAvailable.version + ' available (you have v' + currentVersion + ')  ');
+    banner.appendChild(text);
     const link = document.createElement('a');
     link.href = stored.updateAvailable.url;
     link.target = '_blank';
-    link.textContent = 'Download';
-    banner.appendChild(text);
+    link.textContent = 'Download update';
     banner.appendChild(link);
     document.querySelector('.header').after(banner);
+  } else {
+    // No update stored — trigger a check now and show "up to date" briefly
+    chrome.runtime.sendMessage({ action: 'checkForUpdates' });
   }
 
   // Show help panel on first ever open

@@ -1,85 +1,213 @@
-# BugJar
+<p align="center">
+  <img src="icons/icon128.png" alt="BugJar" width="80" />
+</p>
 
-Capture bugs in a jar. Screenshot, console, network, annotations — generates AI-ready reports.
+<h1 align="center">BugJar</h1>
 
-A Chrome extension that lets anyone report bugs with full context: annotated screenshots, console logs, network requests, and DOM element inspection. The generated report is a structured Markdown file designed to be directly consumed by AI assistants (Claude, ChatGPT) for faster debugging.
+<p align="center">
+  <strong>Capture bugs in a jar.</strong><br>
+  Screenshot, console, network, annotations — generates AI-ready reports.
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/github/v/release/jgounand/BugJar?style=flat-square&color=e94560" alt="Version" />
+  <img src="https://img.shields.io/badge/manifest-v3-blue?style=flat-square" alt="Manifest V3" />
+  <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License" />
+  <img src="https://img.shields.io/badge/dependencies-0-brightgreen?style=flat-square" alt="Dependencies" />
+  <img src="https://img.shields.io/badge/i18n-EN%20%7C%20FR%20%7C%20ES-blueviolet?style=flat-square" alt="i18n" />
+</p>
+
+---
+
+## What it does
+
+A Chrome extension that lets **anyone** — developers, QA, clients, integrators — report bugs with full context. The generated report is a structured `.md` file designed for **AI assistants** (Claude, ChatGPT) to understand and fix the issue.
+
+### Popup — Capture & Report
+
+```
+┌─────────────────────────────────────┐
+│  🐞 BugJar           v2.2.0  ? ✕   │
+│  [EN] [FR] [ES]                     │
+├──────────┬──────────────────────────┤
+│ Report   │ History                  │
+├──────────┴──────────────────────────┤
+│                                     │
+│  Description                        │
+│  ┌─────────────────────────────┐    │
+│  │ The save button doesn't...  │    │
+│  └─────────────────────────────┘    │
+│                                     │
+│  Steps to reproduce                 │
+│  ┌─────────────────────────────┐    │
+│  │ 1. Go to /settings          │    │
+│  │ 2. Click Save               │    │
+│  │ 3. See error in console     │    │
+│  └─────────────────────────────┘    │
+│                                     │
+│  Category: [Bug ▾]  Priority: [High]│
+│                                     │
+│  ┌─────────────────────────────┐    │
+│  │     ⚡ Capture All          │    │
+│  └─────────────────────────────┘    │
+│                                     │
+│  📸 Screenshot ✓  🖱️ Element ✓     │
+│  📋 Console ✓     🌐 Network ✓     │
+│                                     │
+│  ┌─────────────────────────────┐    │
+│  │     📄 Generate Report      │    │
+│  └─────────────────────────────┘    │
+│                                     │
+│  Status: Ready                      │
+└─────────────────────────────────────┘
+```
+
+### Annotation Editor
+
+```
+┌─────────────────────────────────────────────┐
+│  ✏️ Pen  ➡️ Arrow  ▢ Rect  T Text          │
+│  🔴 🔵 🟢 🟡 ⚫  Size: ━━━●━━  ↩ Undo  ✓ │
+├─────────────────────────────────────────────┤
+│                                             │
+│   ┌─────────────────────────────────┐       │
+│   │                                 │       │
+│   │    Your page screenshot         │       │
+│   │    with annotations drawn       │       │
+│   │    on top ──────────> ⬅️        │       │
+│   │                                 │       │
+│   └─────────────────────────────────┘       │
+│                                             │
+└─────────────────────────────────────────────┘
+```
+
+### Element Inspector
+
+```
+┌──────────────────────────────────────────────────┐
+│  ⚠️ Click on any element to select it   [Cancel] │  ← Red banner
+├──────────────────────────────────────────────────┤
+│                                                  │
+│   ┌──── div.kanban-column  320x450 ────┐         │  ← Tooltip follows cursor
+│   │  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  │         │
+│   │  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  │         │  ← Red highlight on hover
+│   │  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  │         │
+│   └────────────────────────────────────┘         │
+│                                                  │
+│   After click: green persistent highlight        │
+│   ┌── div.kanban-column (320x450) ──┐            │  ← Green + badge
+│   │   ████████████████████████████  │            │
+│   └─────────────────────────────────┘            │
+│                                                  │
+│   Toast: "Element captured: div.kanban-column" ──┘  │
+└──────────────────────────────────────────────────┘
+```
+
+### History Tab
+
+```
+┌─────────────────────────────────────┐
+│ Report   │ History                  │
+├──────────┴──────────────────────────┤
+│  3 reports              [Clear All] │
+│                                     │
+│  ┌─────────────────────────────┐    │
+│  │ Mar 29, 10:30  High Bug  ✕ │    │
+│  │ https://app.example.com/... │    │
+│  │ The save button doesn't...  │    │
+│  └─────────────────────────────┘    │
+│                                     │
+│  ┌─────────────────────────────┐    │
+│  │ Mar 28, 15:45  Med Feature  │    │
+│  │ https://app.example.com/... │    │
+│  │ Add filter by project...    │    │
+│  └─────────────────────────────┘    │
+└─────────────────────────────────────┘
+```
 
 ## Features
 
-- **Screenshot** — capture the visible tab with one click
-- **Annotate** — draw on the screenshot: freehand pen, arrows, rectangles, text labels, color picker
-- **Console Capture** — collects the last 100 console messages (log, warn, error, info) with timestamps
-- **Network Capture** — collects recent XHR/fetch requests with method, status, URL, duration
-- **DOM Inspector** — click any element to capture its tag, classes, CSS selector, XPath, computed styles
-- **AI-Ready Report** — generates a `.md` file with embedded screenshot that Claude/AI can parse and act on
+| Feature | Description |
+|---------|-------------|
+| **Capture All** | One click captures screenshot + console + network |
+| **Screenshot** | Capture visible tab + annotate (pen, arrows, rectangles, text) |
+| **Console** | Last 100 messages with timestamps + **stack traces** for errors |
+| **Network** | XHR/fetch requests with status, duration + **response body** for 4xx/5xx |
+| **DOM Inspector** | Click any element → captures selector, XPath, computed styles |
+| **Framework Detection** | Detects Angular, React, Vue, jQuery with version |
+| **SPA Navigation** | Tracks pushState/replaceState route changes |
+| **Storage Keys** | Captures localStorage/sessionStorage key names + sizes |
+| **Multi-screenshots** | Up to 5 screenshots per report |
+| **AI-Ready Report** | Structured `.md` file optimized for Claude/ChatGPT |
+| **History** | View and manage past reports |
+| **i18n** | English, French, Spanish |
+| **Dark Mode** | Follows system preference |
+| **Auto-Update** | Checks GitHub releases every 24h, shows badge |
+| **Keyboard Shortcuts** | `Ctrl+Shift+B` open, `Ctrl+Shift+J` capture all |
 
 ## Install
 
-1. Clone or download this repo
-2. Open `chrome://extensions/` in Chrome
-3. Enable **Developer mode** (top right toggle)
-4. Click **Load unpacked** and select the `BugJar/` folder
-5. The BugJar icon appears in the toolbar
+1. Download the [latest release](https://github.com/jgounand/BugJar/releases/latest)
+2. Unzip `BugJar-vX.X.X.zip`
+3. Open `chrome://extensions/` in Chrome
+4. Enable **Developer mode** (top right toggle)
+5. Click **Load unpacked** → select the unzipped folder
+6. The BugJar icon appears in the toolbar
 
-## Usage
+## Generated Report
 
-1. Navigate to the page with the bug
-2. Click the BugJar icon in the toolbar
-3. Describe the issue
-4. Use the capture buttons:
-   - **Screenshot** — captures + opens the annotation editor
-   - **Select Element** — click an element on the page to inspect it
-   - **Console** — grabs console logs
-   - **Network** — grabs network requests
-5. Click **Generate Report** — downloads a `.md` file
-6. Share the `.md` file with your developer or AI assistant
-
-## Annotation Editor
-
-When you capture a screenshot, an annotation editor opens in a new tab:
-
-- **Pen** (P) — freehand drawing
-- **Arrow** (A) — draw arrows
-- **Rectangle** (R) — draw rectangles/highlights
-- **Text** (T) — click to place text labels
-- **Color picker** — red, blue, green, yellow, black
-- **Size slider** — adjust line thickness
-- **Undo** (Ctrl/Cmd+Z)
-- **Done** — save and close
-
-## Report Format
-
-The generated `.md` file is structured for AI consumption:
+The `.md` file contains everything an AI needs to fix the bug:
 
 ```markdown
 # Bug Report / Feedback
 **URL:** https://app.example.com/dashboard
 **Category:** Bug  |  **Priority:** High
 
+## Environment
+- Resolution: 1920x1080 (viewport: 1280x720)
+- Browser: Chrome 120.0.0.0
+- Framework: Angular 21.0.0
+
 ## Description
-The save button doesn't work...
+The save button doesn't respond after editing...
+
+## Steps to Reproduce
+1. Go to /settings
+2. Edit any field
+3. Click Save → nothing happens
 
 ## Screenshot
-![Screenshot](data:image/png;base64,...)
+![Screenshot](feedback-screenshot.png)
 
-## Console Logs
-10:30:01 [ERROR] Cannot read property 'save' of undefined
+## Selected DOM Element
+Tag: button.btn-save
+Selector: #settings-form > .actions > button.btn-save
 
-## Network Requests
-| Method | Status | URL              | Duration |
-|--------|--------|------------------|----------|
-| POST   | 500    | /api/save        | 234ms    |
+## Console Logs (3 errors)
+10:30:01 [ERROR] TypeError: Cannot read property 'save' of undefined
+  at SettingsComponent.onSave (settings.component.ts:45)
 
-## Instructions for AI (Claude)
-Identify the root cause and propose a fix...
+## Network Requests (1 failed)
+| Method | Status | URL | Duration |
+|--------|--------|-----|----------|
+| POST | 500 | /api/settings | 234ms |
+> Response: {"error":"Column 'NAME' cannot be null"}
 ```
+
+## Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+Shift+B` (Mac: `Cmd+Shift+B`) | Open BugJar popup |
+| `Ctrl+Shift+J` (Mac: `Cmd+Shift+J`) | Quick capture all |
 
 ## Tech
 
-- Vanilla JS — no framework, no build step
+- Vanilla JavaScript — no framework, no build step, no bundler
 - Chrome Extension Manifest V3
 - Canvas API for annotations
 - Zero external dependencies
+- 96 unit tests (`node tests/test.js`)
 
 ## License
 
