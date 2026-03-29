@@ -83,4 +83,8 @@ Identify the root cause and propose a fix...
 
 ## License
 
-MIT License - Copyright (c) 2026 Joris Gounand
+Current versions (v1.x, v2.x): **MIT License** — free for personal and commercial use.
+
+Future versions may be released under a different license. See [LICENSE](LICENSE) for details.
+
+Copyright (c) 2026 Joris Gounand — All rights reserved for future versions.
