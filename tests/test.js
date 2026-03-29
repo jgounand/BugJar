@@ -129,13 +129,13 @@ describe('i18n: detectLanguage()', () => {
 describe('i18n: t() translation lookup', () => {
   assertEqual(t('description', 'en'), 'Description', 'EN: "description" returns "Description"');
   assertEqual(t('description', 'fr'), 'Description', 'FR: "description" returns "Description"');
-  assertEqual(t('description', 'es'), 'Descripcion', 'ES: "description" returns "Descripcion"');
+  assertEqual(t('description', 'es'), 'Descripci\u00f3n', 'ES: "description" returns "Descripcion" (with accent)');
   assertEqual(t('generate', 'en'), 'Generate Report', 'EN: "generate" returns "Generate Report"');
-  assertEqual(t('generate', 'fr'), 'Generer le rapport', 'FR: "generate" returns "Generer le rapport"');
+  assertEqual(t('generate', 'fr'), 'G\u00e9n\u00e9rer le rapport', 'FR: "generate" returns "Generer le rapport" (with accents)');
   assertEqual(t('generate', 'es'), 'Generar informe', 'ES: "generate" returns "Generar informe"');
   assertEqual(t('catBug', 'en'), 'Bug', 'EN: category "catBug" returns "Bug"');
   assertEqual(t('priCritical', 'fr'), 'Critique', 'FR: priority "priCritical" returns "Critique"');
-  assertEqual(t('priCritical', 'es'), 'Critica', 'ES: priority "priCritical" returns "Critica"');
+  assertEqual(t('priCritical', 'es'), 'Cr\u00edtica', 'ES: priority "priCritical" returns "Critica" (with accent)');
 });
 
 describe('i18n: t() fallback behavior', () => {
