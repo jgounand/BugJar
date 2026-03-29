@@ -45,6 +45,27 @@ body {
   opacity: 0.5;
 }
 
+/* -- Update banner --------------------------------------------------------- */
+.update-banner {
+  padding: 8px 16px;
+  background: #fff8e1;
+  color: #795548;
+  font-size: 12px;
+  text-align: center;
+  border-bottom: 1px solid #ffe082;
+}
+
+.update-banner a {
+  color: #e94560;
+  font-weight: 600;
+  text-decoration: none;
+  margin-left: 4px;
+}
+
+.update-banner a:hover {
+  text-decoration: underline;
+}
+
 /* -- Content area ---------------------------------------------------------- */
 .content {
   padding: 14px 16px;

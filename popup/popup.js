@@ -123,35 +123,47 @@ function updatePreviewBadges() {
  * Returns the tab ID on success, or null.
  */
 async function ensureContentScript() {
-  return new Promise((resolve) => {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (!tabs || !tabs[0]) {
-        setStatus('No active tab found', 'error');
-        resolve(null);
-        return;
-      }
+  const [tab] = await new Promise((resolve) => {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => resolve(tabs || []));
+  });
 
-      const tabId = tabs[0].id;
+  if (!tab) {
+    setStatus('No active tab found', 'error');
+    return null;
+  }
 
-      // First, try pinging an already-injected script
-      chrome.tabs.sendMessage(tabId, { action: 'ping' }, (response) => {
-        if (chrome.runtime.lastError || !response || !response.injected) {
-          // Inject it
-          chrome.runtime.sendMessage({ action: 'injectContentScript' }, (res) => {
-            if (res && res.success) {
-              // Short delay for script initialization
-              setTimeout(() => resolve(tabId), 150);
-            } else {
-              setStatus('Cannot inject into this page', 'error');
-              resolve(null);
-            }
-          });
-        } else {
-          resolve(tabId);
-        }
-      });
+  const tabId = tab.id;
+
+  // Try ping first (already injected?)
+  const alreadyReady = await new Promise((resolve) => {
+    chrome.tabs.sendMessage(tabId, { action: 'ping' }, (r) => {
+      resolve(!chrome.runtime.lastError && r && r.injected);
     });
   });
+  if (alreadyReady) return tabId;
+
+  // Inject
+  const res = await new Promise((resolve) => {
+    chrome.runtime.sendMessage({ action: 'injectContentScript', tabId }, resolve);
+  });
+  if (!res || !res.success) {
+    setStatus(`Cannot inject: ${(res && res.error) || 'Restricted page'}`, 'error');
+    return null;
+  }
+
+  // Wait for ready with retries
+  for (let i = 0; i < 15; i++) {
+    await new Promise((r) => setTimeout(r, 100));
+    const ready = await new Promise((resolve) => {
+      chrome.tabs.sendMessage(tabId, { action: 'ping' }, (r) => {
+        resolve(!chrome.runtime.lastError && r && r.injected);
+      });
+    });
+    if (ready) return tabId;
+  }
+
+  setStatus('Content script not responding', 'error');
+  return null;
 }
 
 // ============================================================================
@@ -382,8 +394,17 @@ function buildAndDownloadReport() {
   setStatus('Report downloaded (.md for Claude)', 'success');
 }
 
+function dataUrlToBlob(dataUrl) {
+  const parts = dataUrl.split(',');
+  const mime = parts[0].match(/:(.*?);/)[1];
+  const binary = atob(parts[1]);
+  const array = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) array[i] = binary.charCodeAt(i);
+  return new Blob([array], { type: mime });
+}
+
 function downloadFile(filename, content, mimeType) {
-  const blob = new Blob([content], { type: mimeType });
+  const blob = content instanceof Blob ? content : new Blob([content], { type: mimeType });
   const downloadUrl = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = downloadUrl;
@@ -400,7 +421,7 @@ function downloadFile(filename, content, mimeType) {
  */
 function buildReportMarkdown(ctx) {
   const {
-    now, description, category, priority,
+    now, dateStr, description, category, priority,
     categoryLabels, priorityLabels,
     url, title, userAgent
   } = ctx;
@@ -423,11 +444,15 @@ function buildReportMarkdown(ctx) {
   lines.push(description);
   lines.push('');
 
-  // Screenshot
+  // Screenshot — saved as separate file, referenced by filename
   if (state.screenshot) {
+    const imgExt = state.screenshot.startsWith('data:image/jpeg') ? 'jpg' : 'png';
+    const imgMime = state.screenshot.startsWith('data:image/jpeg') ? 'image/jpeg' : 'image/png';
+    const imgFilename = `feedback-${dateStr}-screenshot.${imgExt}`;
+    downloadFile(imgFilename, dataUrlToBlob(state.screenshot), imgMime);
     lines.push('## Screenshot');
     lines.push('');
-    lines.push(`![Screenshot](${state.screenshot})`);
+    lines.push(`![Screenshot](${imgFilename})`);
     lines.push('');
   }
 
@@ -437,13 +462,13 @@ function buildReportMarkdown(ctx) {
     lines.push('## Selected DOM Element');
     lines.push('');
     lines.push('```');
-    lines.push(`Tag:      ${el.tag || ''}`);
+    lines.push(`Tag:      ${el.tagName || ''}`);
     lines.push(`ID:       ${el.id || '(none)'}`);
     lines.push(`Classes:  ${el.classes || '(none)'}`);
     lines.push(`Selector: ${el.cssSelector || ''}`);
     lines.push(`XPath:    ${el.xpath || ''}`);
     lines.push(`Text:     ${(el.textContent || '').slice(0, 200)}`);
-    lines.push(`Rect:     ${el.rect ? `${el.rect.width}x${el.rect.height} at (${Math.round(el.rect.x)}, ${Math.round(el.rect.y)})` : ''}`);
+    lines.push(`Rect:     ${el.boundingRect ? `${el.boundingRect.width}x${el.boundingRect.height} at (${el.boundingRect.left}, ${el.boundingRect.top})` : ''}`);
     lines.push('```');
     if (el.computedStyles && Object.keys(el.computedStyles).length > 0) {
       lines.push('');
@@ -521,80 +546,33 @@ function buildReportMarkdown(ctx) {
   return lines.join('\n');
 }
 
-/**
- * Builds the self-contained HTML report string.
- * All user-provided and captured values are escaped before embedding.
- */
-function buildReportHTML(ctx) {
-  const {
-    now, dateStr, description, category, priority,
-    categoryLabels, priorityLabels, priorityColors,
-    url, title, userAgent
-  } = ctx;
-
-  // -- Console section --
-  let consoleSection = '';
-  if (state.consoleLogs && state.consoleLogs.length > 0) {
-    const levelColors = { log: '#333', warn: '#f39c12', error: '#e74c3c', info: '#3498db' };
-    const levelBg = { log: '#f8f9fa', warn: '#fff8e1', error: '#fdecea', info: '#e3f2fd' };
-    const rows = state.consoleLogs.map(entry => {
-      const time = escapeHtml(entry.timestamp.split('T')[1].split('.')[0]);
-      const lvl = escapeHtml(entry.level);
-      const msg = escapeHtml(entry.message);
-      const color = levelColors[entry.level] || '#333';
-      const bg = levelBg[entry.level] || '#f8f9fa';
-      return `<div style="padding:6px 10px;border-bottom:1px solid #eee;background:${bg};"><span style="color:#999;font-size:11px;">${time}</span> <span style="display:inline-block;width:50px;font-weight:600;color:${color};text-transform:uppercase;font-size:11px;">${lvl}</span> <span style="font-family:'SF Mono',Consolas,monospace;font-size:12px;white-space:pre-wrap;word-break:break-all;">${msg}</span></div>`;
-    }).join('');
-    consoleSection = `<div style="margin-top:24px;"><h2 style="font-size:16px;color:#1a1a2e;margin-bottom:8px;">Console Logs (${state.consoleLogs.length})</h2><div style="border:1px solid #ddd;border-radius:6px;overflow:hidden;max-height:400px;overflow-y:auto;">${rows}</div></div>`;
+// ============================================================================
+// Restore persisted data on popup open (CRIT-2 + update banner)
+// ============================================================================
+chrome.storage.local.get(['annotatedScreenshot', 'capturedElement', 'updateAvailable'], (stored) => {
+  if (stored.annotatedScreenshot) {
+    state.screenshot = stored.annotatedScreenshot;
+    markCaptured(els.btnScreenshot);
+    showScreenshotPreview(state.screenshot);
+    updatePreviewBadges();
   }
-
-  // -- Network section --
-  let networkSection = '';
-  if (state.networkLogs && state.networkLogs.length > 0) {
-    const rows = state.networkLogs.map(entry => {
-      const statusColor = entry.status >= 400 ? '#e74c3c' : entry.status >= 300 ? '#f39c12' : '#27ae60';
-      const size = entry.responseSize > 1024
-        ? (entry.responseSize / 1024).toFixed(1) + ' KB'
-        : entry.responseSize + ' B';
-      return `<tr><td style="padding:6px 10px;border-bottom:1px solid #eee;font-family:monospace;font-size:11px;white-space:nowrap;">${escapeHtml(entry.method)}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:11px;word-break:break-all;max-width:300px;">${escapeHtml(entry.url)}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:center;font-weight:600;color:${statusColor};font-size:12px;">${entry.status || 'ERR'}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;font-size:11px;color:#666;">${entry.duration}ms</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;font-size:11px;color:#666;">${size}</td></tr>`;
-    }).join('');
-    networkSection = `<div style="margin-top:24px;"><h2 style="font-size:16px;color:#1a1a2e;margin-bottom:8px;">Network Requests (${state.networkLogs.length})</h2><div style="border:1px solid #ddd;border-radius:6px;overflow:hidden;overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-family:system-ui,sans-serif;"><thead><tr style="background:#f5f5f8;"><th style="padding:8px 10px;text-align:left;font-size:11px;font-weight:600;color:#666;border-bottom:2px solid #ddd;">Method</th><th style="padding:8px 10px;text-align:left;font-size:11px;font-weight:600;color:#666;border-bottom:2px solid #ddd;">URL</th><th style="padding:8px 10px;text-align:center;font-size:11px;font-weight:600;color:#666;border-bottom:2px solid #ddd;">Status</th><th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:600;color:#666;border-bottom:2px solid #ddd;">Duration</th><th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:600;color:#666;border-bottom:2px solid #ddd;">Size</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+  if (stored.capturedElement) {
+    state.elementInfo = stored.capturedElement;
+    markCaptured(els.btnElement);
+    showElementPreview(state.elementInfo);
+    updatePreviewBadges();
   }
-
-  // -- Screenshot section --
-  let screenshotSection = '';
-  if (state.screenshot) {
-    screenshotSection = `<div style="margin-top:24px;"><h2 style="font-size:16px;color:#1a1a2e;margin-bottom:8px;">Screenshot</h2><div style="border:1px solid #ddd;border-radius:6px;overflow:hidden;"><img src="${state.screenshot}" style="width:100%;height:auto;display:block;" alt="Screenshot"></div></div>`;
+  if (stored.updateAvailable) {
+    const banner = document.createElement('div');
+    banner.className = 'update-banner';
+    const text = document.createTextNode(`Update v${stored.updateAvailable.version} available! `);
+    const link = document.createElement('a');
+    link.href = stored.updateAvailable.url;
+    link.target = '_blank';
+    link.textContent = 'Download';
+    banner.appendChild(text);
+    banner.appendChild(link);
+    document.querySelector('.header').after(banner);
   }
+});
 
-  // -- Element section --
-  let elementSection = '';
-  if (state.elementInfo) {
-    const ei = state.elementInfo;
-    const idPart = ei.id ? ` <span style="color:#2980b9;">id="${escapeHtml(ei.id)}"</span>` : '';
-    const classPart = ei.classes.length ? ` <span style="color:#27ae60;">class="${escapeHtml(ei.classes.join(' '))}"</span>` : '';
-    const textPart = ei.textContent
-      ? `<div style="margin-top:8px;font-size:11px;color:#888;border-top:1px solid #ddd;padding-top:8px;"><strong>Text:</strong> ${escapeHtml(ei.textContent.substring(0, 150))}${ei.textContent.length > 150 ? '...' : ''}</div>`
-      : '';
-    const styles = Object.entries(ei.computedStyles).map(([k, v]) =>
-      `<span style="display:inline-block;margin:2px 4px;padding:1px 6px;background:#fff;border:1px solid #e0e0e0;border-radius:3px;font-family:monospace;">${escapeHtml(k)}: ${escapeHtml(v)}</span>`
-    ).join('');
-    elementSection = `<div style="margin-top:24px;"><h2 style="font-size:16px;color:#1a1a2e;margin-bottom:8px;">Selected Element</h2><div style="border:1px solid #ddd;border-radius:6px;padding:14px;background:#f8f9fa;"><div style="font-family:monospace;font-size:13px;"><span style="color:#e94560;font-weight:600;">&lt;${escapeHtml(ei.tagName)}</span>${idPart}${classPart}<span style="color:#e94560;">&gt;</span></div><div style="margin-top:8px;font-size:12px;color:#666;"><strong>CSS Selector:</strong> <code style="background:#eee;padding:2px 4px;border-radius:3px;">${escapeHtml(ei.cssSelector)}</code></div><div style="margin-top:4px;font-size:12px;color:#666;"><strong>XPath:</strong> <code style="background:#eee;padding:2px 4px;border-radius:3px;">${escapeHtml(ei.xpath)}</code></div><div style="margin-top:4px;font-size:12px;color:#666;"><strong>Size:</strong> ${ei.boundingRect.width} x ${ei.boundingRect.height}px</div>${textPart}<div style="margin-top:8px;font-size:11px;color:#888;border-top:1px solid #ddd;padding-top:8px;"><strong>Computed Styles:</strong><br>${styles}</div></div></div>`;
-  }
-
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BugJar Report - ${escapeHtml(dateStr)}</title>
-<style>*{margin:0;padding:0;box-sizing:border-box;}body{font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#333;background:#fff;}@media print{body{font-size:11px;}.no-print{display:none!important;}}</style>
-</head>
-<body>
-<div style="background:#1a1a2e;color:#fff;padding:20px 32px;"><div style="display:flex;align-items:center;gap:12px;"><span style="font-size:28px;">&#x1F41E;</span><div><h1 style="font-size:20px;font-weight:600;">BugJar Report</h1><div style="font-size:12px;opacity:0.7;margin-top:4px;">${escapeHtml(now.toLocaleString())}</div></div></div></div>
-<div style="padding:20px 32px;background:#f5f5f8;border-bottom:1px solid #eee;"><div style="display:flex;flex-wrap:wrap;gap:24px;font-size:13px;"><div><strong style="color:#888;">URL:</strong> <a href="${escapeHtml(url)}" style="color:#2980b9;text-decoration:none;">${escapeHtml(url)}</a></div><div><strong style="color:#888;">Page Title:</strong> ${escapeHtml(title)}</div></div><div style="display:flex;flex-wrap:wrap;gap:24px;font-size:13px;margin-top:8px;"><div><strong style="color:#888;">Category:</strong> <span style="display:inline-block;padding:2px 8px;background:#e3f2fd;color:#1565c0;border-radius:4px;font-size:12px;font-weight:500;">${escapeHtml(categoryLabels[category] || category)}</span></div><div><strong style="color:#888;">Priority:</strong> <span style="display:inline-block;padding:2px 8px;background:${priorityColors[priority]}22;color:${priorityColors[priority]};border-radius:4px;font-size:12px;font-weight:600;">${escapeHtml(priorityLabels[priority] || priority)}</span></div></div><div style="font-size:11px;color:#aaa;margin-top:8px;">Browser: ${escapeHtml(userAgent)}</div></div>
-<div style="padding:24px 32px;max-width:960px;"><div><h2 style="font-size:16px;color:#1a1a2e;margin-bottom:8px;">Description</h2><div style="padding:14px;background:#f8f9fa;border:1px solid #ddd;border-radius:6px;white-space:pre-wrap;line-height:1.6;font-size:14px;">${escapeHtml(description)}</div></div>${screenshotSection}${elementSection}${consoleSection}${networkSection}</div>
-<div style="padding:16px 32px;border-top:1px solid #eee;font-size:11px;color:#aaa;text-align:center;margin-top:32px;">Generated by BugJar v1.0.0</div>
-</body>
-</html>`;
-}

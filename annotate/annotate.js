@@ -65,6 +65,10 @@ const btnDone = document.getElementById('btn-done');
     // Clean up
     chrome.storage.local.remove('pendingScreenshot');
   };
+  img.onerror = () => {
+    chrome.storage.local.remove('pendingScreenshot');
+    document.body.textContent = 'Screenshot data is corrupted. Please capture again.';
+  };
   img.src = data.pendingScreenshot;
 })();
 
@@ -74,7 +78,7 @@ const btnDone = document.getElementById('btn-done');
 function saveState() {
   history.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
   // Cap history to prevent memory issues
-  if (history.length > 50) history.shift();
+  if (history.length > 15) history.shift();
 }
 
 function undo() {
@@ -211,6 +215,7 @@ canvas.addEventListener('mousedown', (e) => {
   }
 });
 
+let rafPending = false;
 canvas.addEventListener('mousemove', (e) => {
   if (!isDrawing) return;
 
@@ -219,12 +224,19 @@ canvas.addEventListener('mousemove', (e) => {
   if (currentTool === 'pen') {
     ctx.lineTo(pos.x, pos.y);
     ctx.stroke();
-  } else if (currentTool === 'arrow') {
-    ctx.putImageData(previewSnapshot, 0, 0);
-    drawArrow(startX, startY, pos.x, pos.y);
-  } else if (currentTool === 'rect') {
-    ctx.putImageData(previewSnapshot, 0, 0);
-    drawRect(startX, startY, pos.x, pos.y);
+  } else if (!rafPending) {
+    rafPending = true;
+    requestAnimationFrame(() => {
+      rafPending = false;
+      if (!isDrawing || !previewSnapshot) return;
+      if (currentTool === 'arrow') {
+        ctx.putImageData(previewSnapshot, 0, 0);
+        drawArrow(startX, startY, pos.x, pos.y);
+      } else if (currentTool === 'rect') {
+        ctx.putImageData(previewSnapshot, 0, 0);
+        drawRect(startX, startY, pos.x, pos.y);
+      }
+    });
   }
 });
 
@@ -247,9 +259,13 @@ canvas.addEventListener('mouseup', (e) => {
 });
 
 canvas.addEventListener('mouseleave', () => {
-  if (isDrawing && currentTool === 'pen') {
-    isDrawing = false;
+  if (!isDrawing) return;
+  isDrawing = false;
+  if (currentTool === 'pen') {
     saveState();
+  } else if (previewSnapshot) {
+    ctx.putImageData(previewSnapshot, 0, 0);
+    previewSnapshot = null;
   }
 });
 
@@ -331,9 +347,9 @@ function commitText() {
 btnUndo.addEventListener('click', undo);
 btnClear.addEventListener('click', clearAll);
 
-// Done: export canvas and save to storage
+// Done: export canvas as JPEG (smaller) and save to storage
 btnDone.addEventListener('click', async () => {
-  const dataUrl = canvas.toDataURL('image/png');
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
   await chrome.storage.local.set({ annotatedScreenshot: dataUrl });
 
   // Close this tab

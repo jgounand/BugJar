@@ -400,6 +400,5 @@
       default:
         sendResponse({ success: false, error: 'Unknown action' });
     }
-    return true;
   });
 })();
