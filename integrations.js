@@ -233,7 +233,7 @@ async function sendToIntegrations(reportMarkdown, metadata) {
   var config = profile.integrations;
   var promises = [];
 
-  if (config.slack.enabled && config.slack.webhookUrl) {
+  if (config.slack.enabled && (config.slack.webhookUrl || config.slack.botToken)) {
     promises.push(sendToSlack(config.slack, reportMarkdown, metadata));
   }
   if (config.azureDevOps.enabled && config.azureDevOps.pat) {
