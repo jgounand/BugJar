@@ -244,27 +244,56 @@ async function handleGetActiveTabInfo(sendResponse) {
 // ---------------------------------------------------------------------------
 async function handleSlackFileUpload(message, sendResponse) {
   try {
-    // Convert base64 to Blob
+    var authHeader = { 'Authorization': 'Bearer ' + message.botToken };
+
+    // Convert base64 to binary
     var binary = atob(message.base64);
     var array = new Uint8Array(binary.length);
     for (var i = 0; i < binary.length; i++) array[i] = binary.charCodeAt(i);
-    var blob = new Blob([array], { type: message.mimeType || 'image/png' });
 
-    // Build FormData for Slack files.upload
-    var formData = new FormData();
-    formData.append('file', blob, message.filename || 'screenshot.png');
-    formData.append('channels', message.channelId);
-    if (message.threadTs) formData.append('thread_ts', message.threadTs);
-    if (message.comment) formData.append('initial_comment', message.comment);
-
-    var response = await fetch('https://slack.com/api/files.upload', {
+    // Step 1: Get upload URL from Slack
+    var getUrlRes = await fetch('https://slack.com/api/files.getUploadURLExternal', {
       method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + message.botToken },
-      body: formData
+      headers: Object.assign({ 'Content-Type': 'application/x-www-form-urlencoded' }, authHeader),
+      body: 'filename=' + encodeURIComponent(message.filename || 'screenshot.png') + '&length=' + array.length
+    });
+    var getUrlJson = await getUrlRes.json();
+
+    if (!getUrlJson.ok) {
+      sendResponse({ success: false, error: 'getUploadURL: ' + (getUrlJson.error || 'failed') });
+      return;
+    }
+
+    var uploadUrl = getUrlJson.upload_url;
+    var fileId = getUrlJson.file_id;
+
+    // Step 2: Upload binary to the presigned URL
+    var uploadRes = await fetch(uploadUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': message.mimeType || 'image/png' },
+      body: array.buffer
     });
 
-    var json = await response.json();
-    sendResponse({ success: json.ok, error: json.ok ? undefined : json.error });
+    if (!uploadRes.ok) {
+      sendResponse({ success: false, error: 'upload: HTTP ' + uploadRes.status });
+      return;
+    }
+
+    // Step 3: Complete the upload and share to channel/thread
+    var completeBody = {
+      files: [{ id: fileId, title: message.comment || message.filename || 'Screenshot' }],
+      channel_id: message.channelId
+    };
+    if (message.threadTs) completeBody.thread_ts = message.threadTs;
+
+    var completeRes = await fetch('https://slack.com/api/files.completeUploadExternal', {
+      method: 'POST',
+      headers: Object.assign({ 'Content-Type': 'application/json' }, authHeader),
+      body: JSON.stringify(completeBody)
+    });
+    var completeJson = await completeRes.json();
+
+    sendResponse({ success: completeJson.ok, error: completeJson.ok ? undefined : completeJson.error });
   } catch (e) {
     sendResponse({ success: false, error: e.message });
   }
