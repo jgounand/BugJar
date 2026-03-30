@@ -23,6 +23,22 @@
 
 A Chrome extension that lets **anyone** — developers, QA, clients, integrators — report bugs with full context. The generated report is a structured `.md` file designed for **AI assistants** (Claude, ChatGPT) to understand and fix the issue.
 
+### Screenshots
+
+<p align="center">
+  <img src="screenshots/popup-report.png" alt="Report tab" width="280" />
+  &nbsp;&nbsp;
+  <img src="screenshots/popup-history.png" alt="History tab" width="280" />
+  &nbsp;&nbsp;
+  <img src="screenshots/popup-settings.png" alt="Settings tab" width="280" />
+</p>
+
+<p align="center">
+  <em>Report</em> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <em>History</em> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <em>Settings</em>
+</p>
+
 ### Popup — Capture & Report
 
 ```
