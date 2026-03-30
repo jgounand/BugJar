@@ -144,6 +144,46 @@ function getProfileById(profiles, id) {
   return null;
 }
 
+// ============================================================================
+// Category → platform type mapping
+// Maps BugJar report categories to the correct type on each platform
+// ============================================================================
+var CATEGORY_MAP = {
+  azureDevOps: {
+    bug: 'Bug',
+    feature: 'User Story',
+    question: 'Task',
+    other: 'Task'
+  },
+  github: {
+    bug: ['bug'],
+    feature: ['enhancement'],
+    question: ['question'],
+    other: []
+  },
+  slack: {
+    bug: ':beetle: Bug',
+    feature: ':bulb: Feature Request',
+    question: ':question: Question',
+    other: ':memo: Other'
+  }
+};
+
+function getAzureDevOpsType(category, configDefault) {
+  return CATEGORY_MAP.azureDevOps[category] || configDefault || 'Bug';
+}
+
+function getGitHubLabels(category, priority) {
+  var labels = (CATEGORY_MAP.github[category] || []).slice();
+  if (priority === 'critical' || priority === 'high') labels.push('priority: high');
+  if (priority === 'critical') labels.push('critical');
+  return labels;
+}
+
+function getSlackCategoryLabel(category) {
+  return CATEGORY_MAP.slack[category] || category;
+}
+
 /**
  * Proxy fetch through the background service worker.
  * Background scripts have relaxed CORS in MV3 — no extra permissions needed.
@@ -198,7 +238,8 @@ async function sendToIntegrations(reportMarkdown, metadata) {
 // -- SLACK --
 async function sendToSlack(config, reportMD, metadata) {
   try {
-    var text = '*Bug Report* — ' + (metadata.category || 'Bug') + ' (' + (metadata.priority || 'Medium') + ')\n';
+    var catLabel = getSlackCategoryLabel(metadata.category);
+    var text = '*' + catLabel + '* (' + (metadata.priority || 'Medium') + ')\n';
     text += '*URL:* ' + (metadata.url || 'Unknown') + '\n';
     text += '*Description:* ' + (metadata.description || '').substring(0, 300) + '\n';
     if (metadata.consoleErrorCount > 0) text += '*Console errors:* ' + metadata.consoleErrorCount + '\n';
@@ -220,11 +261,14 @@ async function sendToSlack(config, reportMD, metadata) {
 // -- AZURE DEVOPS --
 async function sendToAzureDevOps(config, reportMD, metadata) {
   try {
+    // Map BugJar category to Azure DevOps work item type
+    var wiType = getAzureDevOpsType(metadata.category, config.workItemType);
+
     var url = 'https://dev.azure.com/' + encodeURIComponent(config.organization) + '/' +
               encodeURIComponent(config.project) + '/_apis/wit/workitems/$' +
-              encodeURIComponent(config.workItemType || 'Bug') + '?api-version=7.1';
+              encodeURIComponent(wiType) + '?api-version=7.1';
 
-    var title = (metadata.category || 'Bug') + ': ' + (metadata.description || 'Bug Report').substring(0, 100);
+    var title = wiType + ': ' + (metadata.description || 'Bug Report').substring(0, 100);
 
     var body = [
       { op: 'add', path: '/fields/System.Title', value: title },
@@ -315,11 +359,10 @@ async function sendToGitHub(config, reportMD, metadata) {
     var url = 'https://api.github.com/repos/' + encodeURIComponent(config.owner) + '/' +
               encodeURIComponent(config.repo) + '/issues';
 
-    var title = (metadata.category || 'Bug') + ': ' + (metadata.description || 'Bug Report').substring(0, 100);
-    var labels = [];
-    if (metadata.category === 'bug') labels.push('bug');
-    if (metadata.category === 'feature') labels.push('enhancement');
-    if (metadata.priority === 'critical' || metadata.priority === 'high') labels.push('priority: high');
+    // Map BugJar category + priority to GitHub labels
+    var categoryLabel = { bug: 'Bug', feature: 'Feature Request', question: 'Question', other: 'Other' };
+    var title = (categoryLabel[metadata.category] || metadata.category) + ': ' + (metadata.description || 'Bug Report').substring(0, 100);
+    var labels = getGitHubLabels(metadata.category, metadata.priority);
 
     var response = await bgFetch(
       url,
