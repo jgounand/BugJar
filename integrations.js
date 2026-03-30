@@ -364,13 +364,37 @@ async function sendToSlackWithThread(config, reportMD, metadata, summary) {
     }));
   }
 
-  // 4. Post screenshots info in thread
-  if (screenshotCount > 0) {
-    await bgFetch(apiUrl, 'POST', headers, JSON.stringify({
-      channel: config.channelId,
-      thread_ts: threadTs,
-      text: ':camera: *' + screenshotCount + ' screenshot(s) captured* — download the report (.md) from BugJar History to view them.'
-    }));
+  // 4. Upload screenshots as files in the thread
+  if (metadata.steps) {
+    for (var si = 0; si < metadata.steps.length; si++) {
+      var step = metadata.steps[si];
+      if (step.screenshots) {
+        for (var sci = 0; sci < step.screenshots.length; sci++) {
+          var dataUrl = step.screenshots[sci];
+          if (!dataUrl || dataUrl.indexOf('data:image') !== 0) continue;
+
+          var base64 = dataUrl.split(',')[1];
+          var mime = dataUrl.indexOf('data:image/jpeg') === 0 ? 'image/jpeg' : 'image/png';
+          var ext = mime === 'image/jpeg' ? 'jpg' : 'png';
+          var comment = ':camera: Step ' + (si + 1);
+          if (step.description) comment += ' — ' + step.description.substring(0, 100);
+
+          // Upload via background.js slackUploadFile (FormData, binary)
+          await new Promise(function (resolve) {
+            chrome.runtime.sendMessage({
+              action: 'slackUploadFile',
+              base64: base64,
+              mimeType: mime,
+              filename: 'step-' + (si + 1) + '-screenshot-' + (sci + 1) + '.' + ext,
+              channelId: config.channelId,
+              threadTs: threadTs,
+              botToken: config.botToken,
+              comment: comment
+            }, function (r) { resolve(r); });
+          });
+        }
+      }
+    }
   }
 
   // 5. Post clean report as text (strip base64 data URLs for readability)

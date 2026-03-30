@@ -85,6 +85,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return;
   }
 
+  // Upload binary file to Slack (requires FormData, not JSON)
+  if (message.action === 'slackUploadFile') {
+    handleSlackFileUpload(message, sendResponse);
+    return true; // async
+  }
+
   switch (message.action) {
     case 'captureScreenshot':
       handleCaptureScreenshot(sendResponse);
@@ -236,6 +242,34 @@ async function handleGetActiveTabInfo(sendResponse) {
 // Fetch proxy — allows popup/integrations to call external APIs via the
 // background service worker (relaxed CORS, no extra host_permissions needed)
 // ---------------------------------------------------------------------------
+async function handleSlackFileUpload(message, sendResponse) {
+  try {
+    // Convert base64 to Blob
+    var binary = atob(message.base64);
+    var array = new Uint8Array(binary.length);
+    for (var i = 0; i < binary.length; i++) array[i] = binary.charCodeAt(i);
+    var blob = new Blob([array], { type: message.mimeType || 'image/png' });
+
+    // Build FormData for Slack files.upload
+    var formData = new FormData();
+    formData.append('file', blob, message.filename || 'screenshot.png');
+    formData.append('channels', message.channelId);
+    if (message.threadTs) formData.append('thread_ts', message.threadTs);
+    if (message.comment) formData.append('initial_comment', message.comment);
+
+    var response = await fetch('https://slack.com/api/files.upload', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + message.botToken },
+      body: formData
+    });
+
+    var json = await response.json();
+    sendResponse({ success: json.ok, error: json.ok ? undefined : json.error });
+  } catch (e) {
+    sendResponse({ success: false, error: e.message });
+  }
+}
+
 async function handleFetchProxy(message, sendResponse) {
   try {
     var response = await fetch(message.url, {

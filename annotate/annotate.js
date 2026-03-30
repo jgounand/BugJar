@@ -347,15 +347,25 @@ function commitText() {
 btnUndo.addEventListener('click', undo);
 btnClear.addEventListener('click', clearAll);
 
-// Done: export canvas as JPEG (smaller) and save to storage
+// Done: export canvas as JPEG (smaller), save to storage, return to previous tab
 btnDone.addEventListener('click', async () => {
   const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
   await chrome.storage.local.set({ annotatedScreenshot: dataUrl });
 
-  // Close this tab
+  // Find the tab we came from and activate it, then close this tab
   const currentTab = await chrome.tabs.getCurrent();
   if (currentTab) {
+    // Get all tabs and find the one that was active before (the page being tested)
+    const tabs = await chrome.tabs.query({ currentWindow: true });
+    const currentIndex = tabs.findIndex(t => t.id === currentTab.id);
+    // Activate the previous tab (the one before the annotation tab)
+    const prevTab = currentIndex > 0 ? tabs[currentIndex - 1] : (tabs.length > 1 ? tabs[0] : null);
+    if (prevTab) {
+      await chrome.tabs.update(prevTab.id, { active: true });
+    }
     chrome.tabs.remove(currentTab.id);
+    // Reopen BugJar popup
+    try { chrome.action.openPopup(); } catch (e) { /* Chrome < 99 */ }
   }
 });
 
