@@ -9,8 +9,8 @@
 
 (() => {
   // Guard against double-injection
-  if (window.__kmFeedbackInjected) return;
-  window.__kmFeedbackInjected = true;
+  if (window.__bugjarInjected) return;
+  window.__bugjarInjected = true;
 
   // =========================================================================
   // 1. CONSOLE CAPTURE
@@ -243,7 +243,7 @@
     // Highlight overlay (follows mouse)
     if (!highlightOverlay) {
       highlightOverlay = document.createElement('div');
-      highlightOverlay.id = '__km_feedback_overlay';
+      highlightOverlay.id = '__bugjar_overlay';
       highlightOverlay.style.cssText = 'position:fixed;pointer-events:none;border:2px solid #e94560;background:rgba(233,69,96,0.15);z-index:2147483646;transition:all 0.05s ease;display:none;border-radius:2px;';
       document.body.appendChild(highlightOverlay);
     }
@@ -251,7 +251,7 @@
     // Tooltip (shows tag.class near cursor)
     if (!tooltipEl) {
       tooltipEl = document.createElement('div');
-      tooltipEl.id = '__km_feedback_tooltip';
+      tooltipEl.id = '__bugjar_tooltip';
       tooltipEl.style.cssText = 'position:fixed;pointer-events:none;z-index:2147483647;background:#1a1a2e;color:#fff;padding:4px 8px;border-radius:4px;font:12px monospace;white-space:nowrap;display:none;box-shadow:0 2px 8px rgba(0,0,0,0.3);';
       document.body.appendChild(tooltipEl);
     }
@@ -259,7 +259,7 @@
     // Top banner with instructions + cancel button
     if (!bannerEl) {
       bannerEl = document.createElement('div');
-      bannerEl.id = '__km_feedback_banner';
+      bannerEl.id = '__bugjar_banner';
       bannerEl.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:2147483647;background:#e94560;color:#fff;padding:10px 20px;font:14px system-ui,sans-serif;text-align:center;display:flex;align-items:center;justify-content:center;gap:16px;box-shadow:0 2px 12px rgba(0,0,0,0.3);';
 
       const textSpan = document.createElement('span');
@@ -286,7 +286,7 @@
     if (selectedHighlight) selectedHighlight.remove();
 
     selectedHighlight = document.createElement('div');
-    selectedHighlight.id = '__km_feedback_selected';
+    selectedHighlight.id = '__bugjar_selected';
     selectedHighlight.style.cssText = 'position:fixed;pointer-events:none;z-index:2147483645;border:3px solid #27ae60;background:rgba(39,174,96,0.1);border-radius:2px;top:' + rect.top + 'px;left:' + rect.left + 'px;width:' + rect.width + 'px;height:' + rect.height + 'px;';
 
     const label = document.createElement('div');
@@ -391,7 +391,7 @@
   function isInspectorElement(el) {
     let node = el;
     while (node) {
-      if (node.id && node.id.startsWith('__km_feedback_')) return true;
+      if (node.id && node.id.startsWith('__bugjar_')) return true;
       node = node.parentElement;
     }
     return false;
