@@ -757,8 +757,12 @@ function showIntegrationResults(results, profileName) {
 
     var icon = document.createElement('span');
     icon.className = 'ir-icon';
-    icon.textContent = r.success ? '\u2705' : '\u274C';
+    icon.textContent = getPlatformIcon(r.integration);
     item.appendChild(icon);
+
+    var statusIcon = document.createElement('span');
+    statusIcon.textContent = r.success ? ' \u2705' : ' \u274C';
+    item.appendChild(statusIcon);
 
     var name = document.createElement('span');
     name.className = 'ir-name';
@@ -927,7 +931,8 @@ async function buildAndDownloadReport() {
     integrations: [] // will be filled after send
   };
 
-  // Send to integrations (profile-aware)
+  // Send to integrations (profile-aware, in parallel)
+  setStatus('Sending to integrations...', '');
   var integrationOut = await sendToIntegrations(reportMD, metadata);
   var integrationResults = integrationOut.results;
   var matchedProfileName = integrationOut.profileName;
@@ -1634,11 +1639,12 @@ function renderHistory(history) {
         var badge = createElement('span', {
           className: 'history-int-badge ' + (intItem.success ? 'success' : 'fail')
         });
+        var platformIcon = getPlatformIcon(intItem.name);
         if (intItem.url) {
-          var intLink = createElement('a', { href: intItem.url, target: '_blank', textContent: intItem.name + ' \u2197' });
+          var intLink = createElement('a', { href: intItem.url, target: '_blank', textContent: platformIcon + ' ' + intItem.name + ' \u2197' });
           badge.appendChild(intLink);
         } else {
-          badge.textContent = intItem.name + (intItem.success ? ' \u2713' : ' \u2717');
+          badge.textContent = platformIcon + ' ' + intItem.name + (intItem.success ? ' \u2713' : ' \u2717');
         }
         intDiv.appendChild(badge);
       }

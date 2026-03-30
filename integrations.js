@@ -200,8 +200,21 @@ function bgFetch(url, method, headers, body) {
   });
 }
 
+// Platform icons for display
+var PLATFORM_ICONS = {
+  'Slack': '\uD83D\uDCAC',
+  'Azure DevOps': '\uD83D\uDD37',
+  'Email': '\u2709\uFE0F',
+  'GitHub': '\uD83D\uDC19',
+  'Webhook': '\uD83D\uDD17'
+};
+
+function getPlatformIcon(name) {
+  return PLATFORM_ICONS[name] || '\u2699\uFE0F';
+}
+
 /**
- * Send report to all enabled integrations.
+ * Send report to all enabled integrations IN PARALLEL.
  * If a URL is provided in metadata.url, the matching profile is used.
  * Returns { results: Array, profileName: string }
  */
@@ -214,23 +227,26 @@ async function sendToIntegrations(reportMarkdown, metadata) {
     profile = getProfileById(data.profiles, data.activeProfile) || data.profiles[0];
   }
   var config = profile.integrations;
-  var results = [];
+  var promises = [];
 
   if (config.slack.enabled && config.slack.webhookUrl) {
-    results.push(await sendToSlack(config.slack, reportMarkdown, metadata));
+    promises.push(sendToSlack(config.slack, reportMarkdown, metadata));
   }
   if (config.azureDevOps.enabled && config.azureDevOps.pat) {
-    results.push(await sendToAzureDevOps(config.azureDevOps, reportMarkdown, metadata));
+    promises.push(sendToAzureDevOps(config.azureDevOps, reportMarkdown, metadata));
   }
   if (config.email.enabled && config.email.to) {
-    results.push(sendToEmail(config.email, reportMarkdown, metadata));
+    promises.push(Promise.resolve(sendToEmail(config.email, reportMarkdown, metadata)));
   }
   if (config.webhook.enabled && config.webhook.url) {
-    results.push(await sendToWebhook(config.webhook, reportMarkdown, metadata));
+    promises.push(sendToWebhook(config.webhook, reportMarkdown, metadata));
   }
   if (config.github.enabled && config.github.token) {
-    results.push(await sendToGitHub(config.github, reportMarkdown, metadata));
+    promises.push(sendToGitHub(config.github, reportMarkdown, metadata));
   }
+
+  // Send all in parallel — wait for ALL to complete
+  var results = promises.length > 0 ? await Promise.all(promises) : [];
 
   return { results: results, profileName: profile.name };
 }
