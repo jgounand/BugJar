@@ -442,9 +442,14 @@ async function captureScreenshotForStep(step) {
     chrome.runtime.sendMessage({ action: 'openAnnotationEditor', dataUrl: dataUrl }, function (r) { resolve(r); });
   });
 
+  // Always save the raw screenshot as a fallback (will be replaced by annotated version if user clicks Done)
+  if (step.screenshots.length >= MAX_SCREENSHOTS_PER_STEP) step.screenshots.shift();
+  step.screenshots.push(dataUrl);
+  persistState();
+  renderSteps();
+
   if (annoRes && annoRes.success) {
-    setStatus('Annotate the screenshot in the new tab', 'success');
-    // Annotation will be picked up on next popup open via storage restore
+    setStatus('Annotate the screenshot in the new tab (raw saved as fallback)', 'success');
   } else {
     // No annotation editor; save raw screenshot directly
     if (step.screenshots.length >= MAX_SCREENSHOTS_PER_STEP) step.screenshots.shift();
@@ -1132,15 +1137,19 @@ chrome.storage.local.get(['annotatedScreenshot', 'capturedElement', 'updateAvail
     if (s.navigationHistory) state.navigationHistory = s.navigationHistory;
   }
 
-  // BUG 10 fix: consume annotatedScreenshot from annotation editor, merge into current step
+  // Consume annotatedScreenshot: replace the last raw screenshot with the annotated version
   if (stored.annotatedScreenshot) {
-    var step = getCurrentStep();
-    if (!step) {
-      step = createStep();
+    var annStep = getCurrentStep();
+    if (!annStep) {
+      annStep = createStep();
     }
-    if (step) {
-      if (step.screenshots.length >= MAX_SCREENSHOTS_PER_STEP) step.screenshots.shift();
-      step.screenshots.push(stored.annotatedScreenshot);
+    if (annStep) {
+      // Replace the last screenshot (raw fallback) with the annotated version
+      if (annStep.screenshots.length > 0) {
+        annStep.screenshots[annStep.screenshots.length - 1] = stored.annotatedScreenshot;
+      } else {
+        annStep.screenshots.push(stored.annotatedScreenshot);
+      }
     }
     chrome.storage.local.remove('annotatedScreenshot');
     persistState();
