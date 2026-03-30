@@ -2,6 +2,12 @@
  * BugJar — Integrations module
  * Sends reports to configured destinations (Slack, Azure DevOps, Email, Webhook, GitHub)
  * All credentials are stored per-user in chrome.storage.local — nothing hardcoded.
+ *
+ * Storage format (profile-based):
+ *   bugjarIntegrations: {
+ *     activeProfile: 'default',
+ *     profiles: [ { id, name, urlPattern, integrations: { slack, azureDevOps, email, webhook, github } }, ... ]
+ *   }
  */
 
 var INTEGRATIONS_STORAGE_KEY = 'bugjarIntegrations';
@@ -15,19 +21,127 @@ var DEFAULT_INTEGRATIONS = {
   github: { enabled: false, owner: '', repo: '', token: '' }
 };
 
-async function loadIntegrations() {
-  var stored = (await chrome.storage.local.get(INTEGRATIONS_STORAGE_KEY))[INTEGRATIONS_STORAGE_KEY] || {};
+function createDefaultProfile() {
   return {
-    slack: Object.assign({}, DEFAULT_INTEGRATIONS.slack, stored.slack || {}),
-    azureDevOps: Object.assign({}, DEFAULT_INTEGRATIONS.azureDevOps, stored.azureDevOps || {}),
-    email: Object.assign({}, DEFAULT_INTEGRATIONS.email, stored.email || {}),
-    webhook: Object.assign({}, DEFAULT_INTEGRATIONS.webhook, stored.webhook || {}),
-    github: Object.assign({}, DEFAULT_INTEGRATIONS.github, stored.github || {})
+    id: 'default',
+    name: 'Default',
+    urlPattern: '',
+    integrations: JSON.parse(JSON.stringify(DEFAULT_INTEGRATIONS))
   };
 }
 
+function createEmptyProfile(id, name, urlPattern) {
+  return {
+    id: id,
+    name: name,
+    urlPattern: urlPattern || '',
+    integrations: JSON.parse(JSON.stringify(DEFAULT_INTEGRATIONS))
+  };
+}
+
+/**
+ * Migrate old flat integration config (pre-profile) to the new profile-based format.
+ */
+function migrateOldFormat(stored) {
+  if (stored && stored.profiles) return stored; // already new format
+  // Old format: { slack: {...}, azureDevOps: {...}, ... }
+  var integrations = {};
+  var keys = Object.keys(DEFAULT_INTEGRATIONS);
+  for (var i = 0; i < keys.length; i++) {
+    var k = keys[i];
+    integrations[k] = Object.assign({}, DEFAULT_INTEGRATIONS[k], (stored && stored[k]) || {});
+  }
+  return {
+    activeProfile: 'default',
+    profiles: [{
+      id: 'default',
+      name: 'Default',
+      urlPattern: '',
+      integrations: integrations
+    }]
+  };
+}
+
+/**
+ * Load all profiles from storage.
+ * Returns { activeProfile: string, profiles: Array }
+ */
+async function loadProfiles() {
+  var stored = (await chrome.storage.local.get(INTEGRATIONS_STORAGE_KEY))[INTEGRATIONS_STORAGE_KEY] || {};
+  var data = migrateOldFormat(stored);
+  // Ensure every profile has all integration keys with defaults
+  for (var pi = 0; pi < data.profiles.length; pi++) {
+    var profile = data.profiles[pi];
+    var keys = Object.keys(DEFAULT_INTEGRATIONS);
+    for (var ki = 0; ki < keys.length; ki++) {
+      var k = keys[ki];
+      profile.integrations[k] = Object.assign({}, DEFAULT_INTEGRATIONS[k], profile.integrations[k] || {});
+    }
+  }
+  // Ensure default profile always exists
+  var hasDefault = false;
+  for (var di = 0; di < data.profiles.length; di++) {
+    if (data.profiles[di].id === 'default') { hasDefault = true; break; }
+  }
+  if (!hasDefault) {
+    data.profiles.unshift(createDefaultProfile());
+  }
+  return data;
+}
+
+/**
+ * Save all profiles to storage.
+ */
+async function saveProfiles(data) {
+  await chrome.storage.local.set({ [INTEGRATIONS_STORAGE_KEY]: data });
+}
+
+/**
+ * Backward-compatible: load integrations from the active (or default) profile.
+ * Used by sendToIntegrations when no URL matching is needed.
+ */
+async function loadIntegrations() {
+  var data = await loadProfiles();
+  var profile = getProfileById(data.profiles, data.activeProfile) || data.profiles[0];
+  return profile.integrations;
+}
+
+/**
+ * Backward-compatible: save integrations to the active profile.
+ */
 async function saveIntegrations(config) {
-  await chrome.storage.local.set({ [INTEGRATIONS_STORAGE_KEY]: config });
+  var data = await loadProfiles();
+  var profile = getProfileById(data.profiles, data.activeProfile) || data.profiles[0];
+  profile.integrations = config;
+  await saveProfiles(data);
+}
+
+// -- Profile URL matching --
+
+function matchUrlPattern(url, pattern) {
+  if (!pattern) return false; // empty pattern = default only
+  var regex = pattern
+    .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+    .replace(/\\\*/g, '.*');
+  return new RegExp(regex, 'i').test(url);
+}
+
+function getProfileForUrl(profiles, url) {
+  // Try specific profiles first (non-empty pattern)
+  for (var i = 0; i < profiles.length; i++) {
+    if (profiles[i].urlPattern && matchUrlPattern(url, profiles[i].urlPattern)) {
+      return profiles[i];
+    }
+  }
+  // Fall back to default
+  return getProfileById(profiles, 'default') || profiles[0];
+}
+
+function getProfileById(profiles, id) {
+  for (var i = 0; i < profiles.length; i++) {
+    if (profiles[i].id === id) return profiles[i];
+  }
+  return null;
 }
 
 /**
@@ -48,10 +162,18 @@ function bgFetch(url, method, headers, body) {
 
 /**
  * Send report to all enabled integrations.
- * Returns array of { integration: string, success: boolean, error?: string }
+ * If a URL is provided in metadata.url, the matching profile is used.
+ * Returns { results: Array, profileName: string }
  */
 async function sendToIntegrations(reportMarkdown, metadata) {
-  var config = await loadIntegrations();
+  var data = await loadProfiles();
+  var profile;
+  if (metadata && metadata.url) {
+    profile = getProfileForUrl(data.profiles, metadata.url);
+  } else {
+    profile = getProfileById(data.profiles, data.activeProfile) || data.profiles[0];
+  }
+  var config = profile.integrations;
   var results = [];
 
   if (config.slack.enabled && config.slack.webhookUrl) {
@@ -70,7 +192,7 @@ async function sendToIntegrations(reportMarkdown, metadata) {
     results.push(await sendToGitHub(config.github, reportMarkdown, metadata));
   }
 
-  return results;
+  return { results: results, profileName: profile.name };
 }
 
 // -- SLACK --

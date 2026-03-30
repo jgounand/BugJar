@@ -83,7 +83,13 @@ const TRANSLATIONS = {
     intGithubStep4: 'Copy the token (ghp_...) and paste it above',
     intWebhookStep1: 'Enter any HTTPS URL that accepts JSON payloads',
     intWebhookStep2: 'Works with: Jira, n8n, Zapier, Make, Teams, or any custom API',
-    intWebhookStep3: 'Add custom headers if your endpoint requires authentication (JSON format)'
+    intWebhookStep3: 'Add custom headers if your endpoint requires authentication (JSON format)',
+    // Profiles
+    intProfile: 'Profile',
+    intUrlPattern: 'URL Pattern',
+    intUrlHint: 'Use * as wildcard. This profile\'s integrations will only activate for matching URLs.',
+    intAddProfile: 'New profile name:',
+    intProfileMatched: 'Profile matched'
   },
   fr: {
     description: 'Description',
@@ -159,7 +165,13 @@ const TRANSLATIONS = {
     intGithubStep4: 'Copiez le token (ghp_...) et collez-le ci-dessus',
     intWebhookStep1: 'Entrez n\'importe quelle URL HTTPS qui accepte du JSON',
     intWebhookStep2: 'Compatible avec : Jira, n8n, Zapier, Make, Teams, ou toute API custom',
-    intWebhookStep3: 'Ajoutez des headers custom si votre endpoint requiert une authentification (format JSON)'
+    intWebhookStep3: 'Ajoutez des headers custom si votre endpoint requiert une authentification (format JSON)',
+    // Profiles
+    intProfile: 'Profil',
+    intUrlPattern: 'Pattern URL',
+    intUrlHint: 'Utilisez * comme joker. Les int\u00e9grations de ce profil ne s\'activeront que pour les URLs correspondantes.',
+    intAddProfile: 'Nom du nouveau profil :',
+    intProfileMatched: 'Profil d\u00e9tect\u00e9'
   },
   es: {
     description: 'Descripci\u00f3n',
@@ -235,7 +247,13 @@ const TRANSLATIONS = {
     intGithubStep4: 'Copie el token (ghp_...) y p\u00e9guelo arriba',
     intWebhookStep1: 'Ingrese cualquier URL HTTPS que acepte payloads JSON',
     intWebhookStep2: 'Compatible con: Jira, n8n, Zapier, Make, Teams, o cualquier API personalizada',
-    intWebhookStep3: 'Agregue headers personalizados si su endpoint requiere autenticaci\u00f3n (formato JSON)'
+    intWebhookStep3: 'Agregue headers personalizados si su endpoint requiere autenticaci\u00f3n (formato JSON)',
+    // Profiles
+    intProfile: 'Perfil',
+    intUrlPattern: 'Patr\u00f3n URL',
+    intUrlHint: 'Use * como comod\u00edn. Las integraciones de este perfil solo se activar\u00e1n para URLs coincidentes.',
+    intAddProfile: 'Nombre del nuevo perfil:',
+    intProfileMatched: 'Perfil detectado'
   }
 };
 

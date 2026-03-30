@@ -92,6 +92,19 @@
   <div class="settings-panel" id="settings-panel" style="display:none;">
     <label class="settings-section-title" data-i18n="settingsIntegrations">INTEGRATIONS</label>
 
+    <div class="profile-selector">
+      <label data-i18n="intProfile">Profile</label>
+      <select id="profile-select" class="settings-input"></select>
+      <button id="btn-add-profile" class="profile-add-btn" title="Add profile">+</button>
+      <button id="btn-delete-profile" class="profile-delete-btn" title="Delete profile" style="display:none;">&#10005;</button>
+    </div>
+
+    <div class="profile-url-pattern" id="profile-url-section" style="display:none;">
+      <label data-i18n="intUrlPattern">URL Pattern</label>
+      <input type="text" id="profile-url-pattern" placeholder="*.example.com" class="settings-input">
+      <small class="profile-url-hint" data-i18n="intUrlHint">Use * as wildcard. This profile's integrations will only activate for matching URLs.</small>
+    </div>
+
     <div class="integration-group">
       <label class="integration-toggle">
         <input type="checkbox" id="int-slack-enabled"> Slack

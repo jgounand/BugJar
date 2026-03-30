@@ -860,8 +860,10 @@ async function buildAndDownloadReport() {
   };
   saveToHistory(metadata);
 
-  // Send to integrations
-  var integrationResults = await sendToIntegrations(reportMD, metadata);
+  // Send to integrations (profile-aware)
+  var integrationOut = await sendToIntegrations(reportMD, metadata);
+  var integrationResults = integrationOut.results;
+  var matchedProfileName = integrationOut.profileName;
   if (integrationResults.length > 0) {
     var successCount = integrationResults.filter(function (r) { return r.success; }).length;
     var failCount = integrationResults.length - successCount;
@@ -870,7 +872,8 @@ async function buildAndDownloadReport() {
       var r = integrationResults[ri];
       statusParts.push(r.integration + ': ' + (r.success ? 'OK' : 'FAILED'));
     }
-    setStatus('Sent: ' + statusParts.join(', '), failCount > 0 ? 'error' : 'success');
+    var profileLabel = t('intProfileMatched') + ' \'' + matchedProfileName + '\'';
+    setStatus(profileLabel + ' — ' + statusParts.join(', '), failCount > 0 ? 'error' : 'success');
   }
 
   // Auto-clear state after report generation
@@ -1265,7 +1268,7 @@ document.getElementById('tab-settings').addEventListener('click', function () {
 });
 
 // ============================================================================
-// Settings: load / save / toggle
+// Settings: load / save / toggle (profile-aware)
 // ============================================================================
 var settingsCheckboxes = [
   { id: 'int-slack-enabled', fieldsId: 'int-slack-fields' },
@@ -1284,9 +1287,49 @@ for (var sci = 0; sci < settingsCheckboxes.length; sci++) {
   })(settingsCheckboxes[sci].id, settingsCheckboxes[sci].fieldsId);
 }
 
-async function loadSettingsForm() {
-  var config = await loadIntegrations();
+// In-memory cache of loaded profile data, kept in sync across switches
+var _profileData = null;
 
+/**
+ * Read the form fields into an integrations config object.
+ */
+function readIntegrationsFromForm() {
+  return {
+    slack: {
+      enabled: document.getElementById('int-slack-enabled').checked,
+      webhookUrl: document.getElementById('int-slack-webhook').value.trim()
+    },
+    azureDevOps: {
+      enabled: document.getElementById('int-azdo-enabled').checked,
+      organization: document.getElementById('int-azdo-org').value.trim(),
+      project: document.getElementById('int-azdo-project').value.trim(),
+      pat: document.getElementById('int-azdo-pat').value.trim(),
+      workItemType: document.getElementById('int-azdo-type').value
+    },
+    email: {
+      enabled: document.getElementById('int-email-enabled').checked,
+      to: document.getElementById('int-email-to').value.trim(),
+      subject: document.getElementById('int-email-subject').value.trim()
+    },
+    github: {
+      enabled: document.getElementById('int-github-enabled').checked,
+      owner: document.getElementById('int-github-owner').value.trim(),
+      repo: document.getElementById('int-github-repo').value.trim(),
+      token: document.getElementById('int-github-token').value.trim()
+    },
+    webhook: {
+      enabled: document.getElementById('int-webhook-enabled').checked,
+      url: document.getElementById('int-webhook-url').value.trim(),
+      method: document.getElementById('int-webhook-method').value,
+      headers: document.getElementById('int-webhook-headers').value.trim()
+    }
+  };
+}
+
+/**
+ * Populate integration form fields from a config object.
+ */
+function populateIntegrationFields(config) {
   // Slack
   document.getElementById('int-slack-enabled').checked = config.slack.enabled;
   document.getElementById('int-slack-webhook').value = config.slack.webhookUrl || '';
@@ -1321,38 +1364,116 @@ async function loadSettingsForm() {
   document.getElementById('int-webhook-fields').style.display = config.webhook.enabled ? 'flex' : 'none';
 }
 
+/**
+ * Render the profile dropdown and select the active profile.
+ */
+function renderProfileDropdown(data) {
+  var select = document.getElementById('profile-select');
+  select.replaceChildren();
+  for (var i = 0; i < data.profiles.length; i++) {
+    var opt = document.createElement('option');
+    opt.value = data.profiles[i].id;
+    opt.textContent = data.profiles[i].name;
+    select.appendChild(opt);
+  }
+  select.value = data.activeProfile || 'default';
+}
+
+/**
+ * Show / hide profile-specific UI (URL pattern field + delete button).
+ */
+function updateProfileUI(profileId) {
+  var isDefault = (profileId === 'default');
+  document.getElementById('profile-url-section').style.display = isDefault ? 'none' : 'block';
+  document.getElementById('btn-delete-profile').style.display = isDefault ? 'none' : 'inline-flex';
+}
+
+async function loadSettingsForm() {
+  _profileData = await loadProfiles();
+  renderProfileDropdown(_profileData);
+
+  var profile = getProfileById(_profileData.profiles, _profileData.activeProfile) || _profileData.profiles[0];
+  populateIntegrationFields(profile.integrations);
+  document.getElementById('profile-url-pattern').value = profile.urlPattern || '';
+  updateProfileUI(profile.id);
+}
+
+/**
+ * Save current form values into the currently selected profile in _profileData,
+ * then persist everything to storage.
+ */
+function saveCurrentProfileFromForm() {
+  if (!_profileData) return;
+  var currentId = document.getElementById('profile-select').value;
+  var profile = getProfileById(_profileData.profiles, currentId);
+  if (!profile) return;
+  profile.integrations = readIntegrationsFromForm();
+  // Save URL pattern (only for non-default)
+  if (profile.id !== 'default') {
+    profile.urlPattern = document.getElementById('profile-url-pattern').value.trim();
+  }
+}
+
+// Profile dropdown change handler
+document.getElementById('profile-select').addEventListener('change', function () {
+  // Save current profile's values first
+  saveCurrentProfileFromForm();
+
+  // Switch to new profile
+  var newId = this.value;
+  _profileData.activeProfile = newId;
+  var profile = getProfileById(_profileData.profiles, newId);
+  if (profile) {
+    populateIntegrationFields(profile.integrations);
+    document.getElementById('profile-url-pattern').value = profile.urlPattern || '';
+  }
+  updateProfileUI(newId);
+});
+
+// Add profile button
+document.getElementById('btn-add-profile').addEventListener('click', function () {
+  var name = prompt(t('intAddProfile'));
+  if (!name || !name.trim()) return;
+  name = name.trim();
+
+  // Save current profile first
+  saveCurrentProfileFromForm();
+
+  var newId = 'prof-' + Date.now();
+  var newProfile = createEmptyProfile(newId, name, '');
+  _profileData.profiles.push(newProfile);
+  _profileData.activeProfile = newId;
+
+  renderProfileDropdown(_profileData);
+  populateIntegrationFields(newProfile.integrations);
+  document.getElementById('profile-url-pattern').value = '';
+  updateProfileUI(newId);
+
+  // Save immediately
+  saveProfiles(_profileData);
+});
+
+// Delete profile button
+document.getElementById('btn-delete-profile').addEventListener('click', function () {
+  var currentId = document.getElementById('profile-select').value;
+  if (currentId === 'default') return; // Cannot delete default
+
+  _profileData.profiles = _profileData.profiles.filter(function (p) { return p.id !== currentId; });
+  _profileData.activeProfile = 'default';
+
+  renderProfileDropdown(_profileData);
+  var defaultProfile = getProfileById(_profileData.profiles, 'default') || _profileData.profiles[0];
+  populateIntegrationFields(defaultProfile.integrations);
+  document.getElementById('profile-url-pattern').value = '';
+  updateProfileUI('default');
+
+  // Save immediately
+  saveProfiles(_profileData);
+});
+
 document.getElementById('btn-save-settings').addEventListener('click', async function () {
-  var config = {
-    slack: {
-      enabled: document.getElementById('int-slack-enabled').checked,
-      webhookUrl: document.getElementById('int-slack-webhook').value.trim()
-    },
-    azureDevOps: {
-      enabled: document.getElementById('int-azdo-enabled').checked,
-      organization: document.getElementById('int-azdo-org').value.trim(),
-      project: document.getElementById('int-azdo-project').value.trim(),
-      pat: document.getElementById('int-azdo-pat').value.trim(),
-      workItemType: document.getElementById('int-azdo-type').value
-    },
-    email: {
-      enabled: document.getElementById('int-email-enabled').checked,
-      to: document.getElementById('int-email-to').value.trim(),
-      subject: document.getElementById('int-email-subject').value.trim()
-    },
-    github: {
-      enabled: document.getElementById('int-github-enabled').checked,
-      owner: document.getElementById('int-github-owner').value.trim(),
-      repo: document.getElementById('int-github-repo').value.trim(),
-      token: document.getElementById('int-github-token').value.trim()
-    },
-    webhook: {
-      enabled: document.getElementById('int-webhook-enabled').checked,
-      url: document.getElementById('int-webhook-url').value.trim(),
-      method: document.getElementById('int-webhook-method').value,
-      headers: document.getElementById('int-webhook-headers').value.trim()
-    }
-  };
-  await saveIntegrations(config);
+  saveCurrentProfileFromForm();
+  await saveProfiles(_profileData);
   setStatus('Settings saved', 'success');
 });
 
