@@ -399,12 +399,17 @@ select:focus {
   display: flex; gap: 4px; margin-bottom: 6px;
 }
 .step-capture-btn {
-  flex: 1; padding: 4px; border: 1px solid var(--border); border-radius: 4px;
-  background: var(--bg); color: var(--text); cursor: pointer; font-size: 12px;
+  flex: 1; padding: 6px 2px; border: 1px solid var(--border); border-radius: 4px;
+  background: var(--bg); color: var(--text); cursor: pointer;
   text-align: center; transition: all 0.15s; font-family: inherit;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
 }
+.step-capture-btn .btn-icon { font-size: 16px; line-height: 1; }
+.step-capture-btn .btn-label { font-size: 9px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.3px; }
 .step-capture-btn:hover { border-color: var(--accent); }
+.step-capture-btn:hover .btn-label { color: var(--accent); }
 .step-capture-btn.captured { border-color: #27ae60; background: rgba(39,174,96,0.05); }
+.step-capture-btn.captured .btn-label { color: #27ae60; }
 .step-capture-btn.loading { opacity: 0.6; pointer-events: none; }
 
 .step-summary { font: 11px system-ui; color: var(--text-secondary); }

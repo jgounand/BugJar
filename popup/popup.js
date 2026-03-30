@@ -288,18 +288,25 @@ function renderSteps() {
     captures.className = 'step-captures';
 
     var captureItems = [
-      { icon: '\uD83D\uDCF8', action: 'screenshot', stepId: step.id, hasCap: step.screenshots.length > 0 },
-      { icon: '\uD83D\uDDB1\uFE0F', action: 'element', stepId: step.id, hasCap: step.elements.length > 0 },
-      { icon: '\uD83D\uDCCB', action: 'console', stepId: step.id, hasCap: step.consoleLogs !== null },
-      { icon: '\uD83C\uDF10', action: 'network', stepId: step.id, hasCap: step.networkLogs !== null },
-      { icon: '\u26A1', action: 'captureAll', stepId: step.id, label: t('captureAllStep') }
+      { icon: '\uD83D\uDCF8', label: 'Screenshot', action: 'screenshot', stepId: step.id, hasCap: step.screenshots.length > 0 },
+      { icon: '\uD83D\uDDB1\uFE0F', label: 'Element', action: 'element', stepId: step.id, hasCap: step.elements.length > 0 },
+      { icon: '\uD83D\uDCCB', label: 'Console', action: 'console', stepId: step.id, hasCap: step.consoleLogs !== null },
+      { icon: '\uD83C\uDF10', label: 'Network', action: 'network', stepId: step.id, hasCap: step.networkLogs !== null },
+      { icon: '\u26A1', label: t('captureAllStep'), action: 'captureAll', stepId: step.id, hasCap: false }
     ];
 
     for (var ci = 0; ci < captureItems.length; ci++) {
       var item = captureItems[ci];
       var btn = document.createElement('button');
       btn.className = 'step-capture-btn' + (item.hasCap ? ' captured' : '');
-      btn.textContent = item.icon + (item.label ? ' ' + item.label : '');
+      var iconSpan = document.createElement('span');
+      iconSpan.className = 'btn-icon';
+      iconSpan.textContent = item.icon;
+      btn.appendChild(iconSpan);
+      var labelSpan = document.createElement('span');
+      labelSpan.className = 'btn-label';
+      labelSpan.textContent = item.label;
+      btn.appendChild(labelSpan);
       btn.title = item.action;
       (function (act, sid) {
         btn.addEventListener('click', function () {
