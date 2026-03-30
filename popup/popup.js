@@ -932,6 +932,8 @@ async function buildAndDownloadReport() {
   };
 
   // Send to integrations (profile-aware, in parallel)
+  // Pass steps with screenshots for platforms that can upload files (Slack)
+  metadata.steps = state.steps;
   setStatus('Sending to integrations...', '');
   var integrationOut = await sendToIntegrations(reportMD, metadata);
   var integrationResults = integrationOut.results;
@@ -1372,7 +1374,9 @@ function readIntegrationsFromForm() {
   return {
     slack: {
       enabled: document.getElementById('int-slack-enabled').checked,
-      webhookUrl: document.getElementById('int-slack-webhook').value.trim()
+      webhookUrl: document.getElementById('int-slack-webhook').value.trim(),
+      botToken: document.getElementById('int-slack-bot-token').value.trim(),
+      channelId: document.getElementById('int-slack-channel-id').value.trim()
     },
     azureDevOps: {
       enabled: document.getElementById('int-azdo-enabled').checked,
@@ -1408,6 +1412,8 @@ function populateIntegrationFields(config) {
   // Slack
   document.getElementById('int-slack-enabled').checked = config.slack.enabled;
   document.getElementById('int-slack-webhook').value = config.slack.webhookUrl || '';
+  document.getElementById('int-slack-bot-token').value = config.slack.botToken || '';
+  document.getElementById('int-slack-channel-id').value = config.slack.channelId || '';
   document.getElementById('int-slack-fields').style.display = config.slack.enabled ? 'flex' : 'none';
 
   // Azure DevOps

@@ -14,7 +14,7 @@ var INTEGRATIONS_STORAGE_KEY = 'bugjarIntegrations';
 
 // Default settings (all disabled)
 var DEFAULT_INTEGRATIONS = {
-  slack: { enabled: false, webhookUrl: '' },
+  slack: { enabled: false, webhookUrl: '', botToken: '', channelId: '' },
   azureDevOps: { enabled: false, organization: '', project: '', pat: '', workItemType: 'Bug' },
   email: { enabled: false, to: '', subject: 'Bug Report — BugJar' },
   webhook: { enabled: false, url: '', method: 'POST', headers: '' },
@@ -259,23 +259,130 @@ async function sendToIntegrations(reportMarkdown, metadata) {
 async function sendToSlack(config, reportMD, metadata) {
   try {
     var catLabel = getSlackCategoryLabel(metadata.category);
-    var text = '*' + catLabel + '* (' + (metadata.priority || 'Medium') + ')\n';
-    text += '*URL:* ' + (metadata.url || 'Unknown') + '\n';
-    text += '*Description:* ' + (metadata.description || '').substring(0, 300) + '\n';
-    if (metadata.consoleErrorCount > 0) text += '*Console errors:* ' + metadata.consoleErrorCount + '\n';
-    if (metadata.networkFailCount > 0) text += '*Network failures:* ' + metadata.networkFailCount + '\n';
+    var priorityEmoji = { critical: ':rotating_light:', high: ':warning:', medium: ':large_blue_circle:', low: ':white_circle:' };
+    var emoji = priorityEmoji[metadata.priority] || ':beetle:';
+
+    // Build summary for parent message
+    var summary = emoji + ' *' + catLabel + '* — ' + (metadata.priority || 'Medium') + '\n';
+    summary += ':link: ' + (metadata.url || 'Unknown') + '\n';
+    summary += (metadata.description || '').substring(0, 300);
+
+    // If Bot Token + Channel ID available → use Slack Web API with threading
+    if (config.botToken && config.channelId) {
+      return await sendToSlackWithThread(config, reportMD, metadata, summary);
+    }
+
+    // Fallback: simple webhook (no threading)
+    if (!config.webhookUrl) {
+      return { integration: 'Slack', success: false, error: 'No webhook URL or bot token configured' };
+    }
 
     var response = await bgFetch(
       config.webhookUrl,
       'POST',
       { 'Content-Type': 'application/json' },
-      JSON.stringify({ text: text })
+      JSON.stringify({ text: summary })
     );
 
     return { integration: 'Slack', success: response && response.success, error: (response && response.success) ? undefined : 'HTTP ' + ((response && response.status) || '?') };
   } catch (e) {
     return { integration: 'Slack', success: false, error: e.message };
   }
+}
+
+// Slack Web API with threading: parent message + detailed replies
+async function sendToSlackWithThread(config, reportMD, metadata, summary) {
+  var headers = {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer ' + config.botToken
+  };
+  var apiUrl = 'https://slack.com/api/chat.postMessage';
+
+  // 1. Post parent message (summary)
+  var parentRes = await bgFetch(apiUrl, 'POST', headers, JSON.stringify({
+    channel: config.channelId,
+    text: summary,
+    unfurl_links: false
+  }));
+
+  if (!parentRes || !parentRes.success || !parentRes.json || !parentRes.json.ok) {
+    var err = (parentRes && parentRes.json) ? parentRes.json.error : 'Failed';
+    return { integration: 'Slack', success: false, error: err };
+  }
+
+  var threadTs = parentRes.json.ts;
+
+  // 2. Post console errors in thread (if any)
+  if (metadata.consoleErrorCount > 0) {
+    var consoleText = ':clipboard: *Console Logs (' + metadata.consoleErrorCount + ' errors)*\n';
+    // Extract console section from report markdown
+    var consoleMatch = reportMD.match(/\*\*Console[^*]*\*\*[^`]*```([^`]+)```/);
+    if (consoleMatch) {
+      consoleText += '```' + consoleMatch[1].substring(0, 2500) + '```';
+    }
+    await bgFetch(apiUrl, 'POST', headers, JSON.stringify({
+      channel: config.channelId,
+      thread_ts: threadTs,
+      text: consoleText
+    }));
+  }
+
+  // 3. Post failed network requests in thread (if any)
+  if (metadata.networkFailCount > 0) {
+    var networkText = ':globe_with_meridians: *Network Failures (' + metadata.networkFailCount + ')*\n';
+    var networkMatch = reportMD.match(/\*\*Failed requests:\*\*\n([\s\S]*?)(?=\n\n|\n###|\n##|$)/);
+    if (networkMatch) {
+      networkText += networkMatch[1].substring(0, 2000);
+    }
+    await bgFetch(apiUrl, 'POST', headers, JSON.stringify({
+      channel: config.channelId,
+      thread_ts: threadTs,
+      text: networkText
+    }));
+  }
+
+  // 4. Post screenshots in thread (as file uploads)
+  if (metadata.steps) {
+    for (var si = 0; si < metadata.steps.length; si++) {
+      var step = metadata.steps[si];
+      if (step.screenshots) {
+        for (var sci = 0; sci < step.screenshots.length; sci++) {
+          var dataUrl = step.screenshots[sci];
+          if (!dataUrl || !dataUrl.startsWith('data:image')) continue;
+
+          var comment = ':camera: Step ' + (si + 1) + ' — Screenshot ' + (sci + 1);
+          if (step.description) comment += ': ' + step.description.substring(0, 100);
+
+          // Upload via Slack files.upload (send base64 as content)
+          var base64Data = dataUrl.split(',')[1];
+          var mimeType = dataUrl.match(/data:(.*?);/);
+          var ext = (mimeType && mimeType[1] === 'image/jpeg') ? 'jpg' : 'png';
+
+          await bgFetch('https://slack.com/api/files.upload', 'POST', headers, JSON.stringify({
+            channels: config.channelId,
+            thread_ts: threadTs,
+            filename: 'step-' + (si + 1) + '-screenshot-' + (sci + 1) + '.' + ext,
+            initial_comment: comment,
+            content: base64Data,
+            filetype: ext
+          }));
+        }
+      }
+    }
+  }
+
+  // 5. Post full report as text snippet in thread
+  await bgFetch(apiUrl, 'POST', headers, JSON.stringify({
+    channel: config.channelId,
+    thread_ts: threadTs,
+    text: ':page_facing_up: *Full Report*\n```' + reportMD.substring(0, 3500) + '```'
+  }));
+
+  return {
+    integration: 'Slack',
+    success: true,
+    threadTs: threadTs
+  };
 }
 
 // -- Markdown → HTML converter (basic, for Azure DevOps ReproSteps) --
