@@ -1559,6 +1559,158 @@ document.getElementById('btn-save-settings').addEventListener('click', async fun
 });
 
 // ============================================================================
+// Export / Import config
+// ============================================================================
+
+/** Secret field names that must be stripped on export. */
+var SECRET_KEYS = ['botToken', 'pat', 'token', 'password', 'webhookUrl'];
+
+/**
+ * Deep-clone a profiles array, replacing every secret value with ''.
+ */
+function stripSecrets(profiles) {
+  var clone = JSON.parse(JSON.stringify(profiles));
+  for (var pi = 0; pi < clone.length; pi++) {
+    var integrations = clone[pi].integrations;
+    if (!integrations) continue;
+    var intKeys = Object.keys(integrations);
+    for (var ik = 0; ik < intKeys.length; ik++) {
+      var cfg = integrations[intKeys[ik]];
+      if (!cfg || typeof cfg !== 'object') continue;
+      for (var sk = 0; sk < SECRET_KEYS.length; sk++) {
+        if (SECRET_KEYS[sk] in cfg) {
+          cfg[SECRET_KEYS[sk]] = '';
+        }
+      }
+    }
+  }
+  return clone;
+}
+
+// Export Config
+document.getElementById('btn-export-config').addEventListener('click', async function () {
+  // Ensure latest form values are captured
+  saveCurrentProfileFromForm();
+  var data = _profileData || await loadProfiles();
+
+  var exportObj = {
+    _bugjar_config: true,
+    _version: chrome.runtime.getManifest().version,
+    _exported: new Date().toISOString(),
+    _note: 'BugJar shared configuration. Tokens are stripped for security \u2014 each user must add their own.',
+    profiles: stripSecrets(data.profiles)
+  };
+
+  var dateStr = new Date().toISOString().slice(0, 10);
+  var filename = 'bugjar-config-' + dateStr + '.json';
+  var blob = new Blob([JSON.stringify(exportObj, null, 2)], { type: 'application/json' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  setStatus(t('exportSuccess'), 'success');
+});
+
+// Import Config
+document.getElementById('btn-import-config').addEventListener('click', function () {
+  document.getElementById('import-file-input').click();
+});
+
+document.getElementById('import-file-input').addEventListener('change', function (e) {
+  var file = e.target.files && e.target.files[0];
+  if (!file) return;
+
+  var reader = new FileReader();
+  reader.onload = async function (evt) {
+    try {
+      var imported = JSON.parse(evt.target.result);
+
+      // Validate
+      if (!imported._bugjar_config || !Array.isArray(imported.profiles) || imported.profiles.length === 0) {
+        setStatus(t('importError'), 'error');
+        return;
+      }
+
+      // Confirm
+      var msg = t('importConfirm').replace('{0}', String(imported.profiles.length));
+      if (!confirm(msg)) return;
+
+      // Load existing profiles for smart merge
+      var existing = _profileData || await loadProfiles();
+
+      // Smart merge: for each imported profile, update or add
+      for (var ip = 0; ip < imported.profiles.length; ip++) {
+        var impProfile = imported.profiles[ip];
+        // Find existing profile with same name
+        var matched = null;
+        for (var ep = 0; ep < existing.profiles.length; ep++) {
+          if (existing.profiles[ep].name === impProfile.name) {
+            matched = existing.profiles[ep];
+            break;
+          }
+        }
+
+        if (matched) {
+          // Update integrations but keep existing secrets
+          var intKeys = Object.keys(impProfile.integrations || {});
+          for (var ik = 0; ik < intKeys.length; ik++) {
+            var intName = intKeys[ik];
+            var impInt = impProfile.integrations[intName];
+            var existInt = matched.integrations[intName] || {};
+
+            // Merge: take imported values, but preserve existing secrets where imported is empty
+            var mergedInt = Object.assign({}, existInt, impInt);
+            for (var sk = 0; sk < SECRET_KEYS.length; sk++) {
+              var secretKey = SECRET_KEYS[sk];
+              if (secretKey in mergedInt && !impInt[secretKey] && existInt[secretKey]) {
+                mergedInt[secretKey] = existInt[secretKey];
+              }
+            }
+            matched.integrations[intName] = mergedInt;
+          }
+          // Update urlPattern if provided
+          if (impProfile.urlPattern !== undefined) {
+            matched.urlPattern = impProfile.urlPattern;
+          }
+        } else {
+          // New profile -- add it with a fresh id (keep name)
+          var newId = impProfile.id === 'default' ? 'default' : ('prof-' + Date.now() + '-' + ip);
+          var newProfile = {
+            id: newId,
+            name: impProfile.name,
+            urlPattern: impProfile.urlPattern || '',
+            integrations: Object.assign({}, JSON.parse(JSON.stringify(DEFAULT_INTEGRATIONS)), impProfile.integrations || {})
+          };
+          existing.profiles.push(newProfile);
+        }
+      }
+
+      // Save and reload
+      _profileData = existing;
+      await saveProfiles(_profileData);
+      renderProfileDropdown(_profileData);
+      var activeProfile = getProfileById(_profileData.profiles, _profileData.activeProfile) || _profileData.profiles[0];
+      populateIntegrationFields(activeProfile.integrations);
+      document.getElementById('profile-url-pattern').value = activeProfile.urlPattern || '';
+      updateProfileUI(activeProfile.id);
+
+      setStatus(t('importSuccess'), 'success');
+    } catch (err) {
+      setStatus(t('importError'), 'error');
+    }
+  };
+  reader.readAsText(file);
+
+  // Reset input so the same file can be re-selected
+  e.target.value = '';
+});
+
+// ============================================================================
 // History functions
 // ============================================================================
 async function saveToHistory(metadata) {

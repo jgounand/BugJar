@@ -92,7 +92,14 @@ const TRANSLATIONS = {
     intProfileMatched: 'Profile matched',
     // Monitoring indicator
     monitoringActive: 'Monitoring active',
-    monitoringInactive: 'Cannot monitor this page'
+    monitoringInactive: 'Cannot monitor this page',
+    // Import / Export config
+    exportConfig: 'Export Config',
+    importConfig: 'Import Config',
+    exportSuccess: 'Config exported (tokens stripped for security)',
+    importConfirm: 'Import {0} profiles? Tokens will need to be re-entered.',
+    importSuccess: 'Config imported successfully',
+    importError: 'Invalid config file'
   },
   fr: {
     description: 'Description',
@@ -177,7 +184,14 @@ const TRANSLATIONS = {
     intProfileMatched: 'Profil d\u00e9tect\u00e9',
     // Monitoring indicator
     monitoringActive: 'Surveillance active',
-    monitoringInactive: 'Impossible de surveiller cette page'
+    monitoringInactive: 'Impossible de surveiller cette page',
+    // Import / Export config
+    exportConfig: 'Exporter la config',
+    importConfig: 'Importer une config',
+    exportSuccess: 'Config export\u00e9e (tokens retir\u00e9s)',
+    importConfirm: 'Importer {0} profils ? Les tokens devront \u00eatre re-saisis.',
+    importSuccess: 'Config import\u00e9e avec succ\u00e8s',
+    importError: 'Fichier de config invalide'
   },
   es: {
     description: 'Descripci\u00f3n',
@@ -262,7 +276,14 @@ const TRANSLATIONS = {
     intProfileMatched: 'Perfil detectado',
     // Monitoring indicator
     monitoringActive: 'Monitoreo activo',
-    monitoringInactive: 'No se puede monitorear esta p\u00e1gina'
+    monitoringInactive: 'No se puede monitorear esta p\u00e1gina',
+    // Import / Export config
+    exportConfig: 'Exportar config',
+    importConfig: 'Importar config',
+    exportSuccess: 'Config exportada (tokens eliminados)',
+    importConfirm: 'Importar {0} perfiles? Los tokens deber\u00e1n reingresarse.',
+    importSuccess: 'Config importada con \u00e9xito',
+    importError: 'Archivo de config inv\u00e1lido'
   }
 };
 

@@ -690,6 +690,18 @@ select:focus {
 .integration-help ol { margin: 4px 0 0; padding-left: 18px; line-height: 1.6; }
 .integration-help li { color: var(--text); }
 
+/* -- Import / Export config buttons ---------------------------------------- */
+.settings-import-export {
+  display: flex; gap: 6px; margin-top: 12px; margin-bottom: 8px;
+}
+.settings-export-btn, .settings-import-btn {
+  flex: 1; padding: 8px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--bg); color: var(--text); cursor: pointer; font: 12px system-ui;
+}
+.settings-export-btn:hover, .settings-import-btn:hover {
+  border-color: var(--accent); color: var(--accent);
+}
+
 /* -- Integration results panel -------------------------------------------- */
 .integration-results {
   background: var(--bg-secondary); border: 1px solid var(--border);
