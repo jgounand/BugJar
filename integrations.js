@@ -16,8 +16,14 @@ var DEFAULT_INTEGRATIONS = {
 };
 
 async function loadIntegrations() {
-  var stored = await chrome.storage.local.get(INTEGRATIONS_STORAGE_KEY);
-  return Object.assign({}, DEFAULT_INTEGRATIONS, stored[INTEGRATIONS_STORAGE_KEY] || {});
+  var stored = (await chrome.storage.local.get(INTEGRATIONS_STORAGE_KEY))[INTEGRATIONS_STORAGE_KEY] || {};
+  return {
+    slack: Object.assign({}, DEFAULT_INTEGRATIONS.slack, stored.slack || {}),
+    azureDevOps: Object.assign({}, DEFAULT_INTEGRATIONS.azureDevOps, stored.azureDevOps || {}),
+    email: Object.assign({}, DEFAULT_INTEGRATIONS.email, stored.email || {}),
+    webhook: Object.assign({}, DEFAULT_INTEGRATIONS.webhook, stored.webhook || {}),
+    github: Object.assign({}, DEFAULT_INTEGRATIONS.github, stored.github || {})
+  };
 }
 
 async function saveIntegrations(config) {

@@ -1,10 +1,11 @@
 {
   "manifest_version": 3,
   "name": "BugJar",
-  "version": "4.0.0",
+  "version": "4.0.1",
   "description": "Capture bugs in a jar — screenshot, console, network, annotations. Generates AI-ready reports.",
   "author": "Joris Gounand",
   "permissions": ["activeTab", "alarms", "scripting", "storage", "tabs"],
+  "host_permissions": ["https://*/*"],
   "action": {
     "default_popup": "popup/popup.html",
     "default_icon": {

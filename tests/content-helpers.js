@@ -50,7 +50,7 @@ function getCssSelector(element) {
       );
       if (siblings.length > 1) {
         const idx = siblings.indexOf(current) + 1;
-        selector += `:nth-child(${idx})`;
+        selector += `:nth-of-type(${idx})`;
       }
     }
     parts.unshift(selector);

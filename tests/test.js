@@ -382,7 +382,7 @@ describe('getCssSelector()', () => {
   const selectorWithParentId = getCssSelector(child);
   assertEqual(selectorWithParentId, '#content > p', 'Child of #id parent produces #id > tag');
 
-  // Test: multiple siblings of same type get nth-child
+  // Test: multiple siblings of same type get nth-of-type
   const container = mockElement('ul', { parentElement: bodyEl, _mockBody: bodyEl });
   container._mockBody = bodyEl;
   const li1 = mockElement('li', { parentElement: container, _mockBody: bodyEl });
@@ -391,7 +391,7 @@ describe('getCssSelector()', () => {
   bodyEl.children = [container];
 
   const selectorLi2 = getCssSelector(li2);
-  assert(selectorLi2.includes(':nth-child(2)'), 'Second li gets :nth-child(2) selector');
+  assert(selectorLi2.includes(':nth-of-type(2)'), 'Second li gets :nth-of-type(2) selector');
 });
 
 // ============================================================================

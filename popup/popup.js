@@ -449,13 +449,8 @@ async function captureScreenshotForStep(step) {
   renderSteps();
 
   if (annoRes && annoRes.success) {
-    setStatus('Annotate the screenshot in the new tab (raw saved as fallback)', 'success');
+    setStatus('Annotate the screenshot in the new tab', 'success');
   } else {
-    // No annotation editor; save raw screenshot directly
-    if (step.screenshots.length >= MAX_SCREENSHOTS_PER_STEP) step.screenshots.shift();
-    step.screenshots.push(dataUrl);
-    persistState();
-    renderSteps();
     setStatus('Screenshot captured', 'success');
   }
 }
@@ -638,8 +633,9 @@ chrome.runtime.onMessage.addListener(function (message) {
       setStatus('Element captured', 'success');
     }
 
-    // Also persist to capturedElement for backward compat with content.js
-    chrome.storage.local.set({ capturedElement: message.elementInfo });
+    // Remove capturedElement from storage to prevent double-import on next popup open
+    // (content.js also writes it, but we've already handled it via onMessage)
+    chrome.storage.local.remove('capturedElement');
   }
 });
 
@@ -880,6 +876,7 @@ async function buildAndDownloadReport() {
   // Auto-clear state after report generation
   state.steps = [];
   state.currentStepId = null;
+  state.tabInfo = null;
   state.frameworkInfo = null;
   state.storageInfo = null;
   state.navigationHistory = null;
