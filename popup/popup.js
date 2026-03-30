@@ -59,6 +59,7 @@ const els = {
   btnGenerate: document.getElementById('btn-generate'),
   btnAddStep: document.getElementById('btn-add-step'),
   stepsList: document.getElementById('steps-list'),
+  integrationResults: document.getElementById('integration-results'),
   statusBar: document.getElementById('status-bar')
 };
 
@@ -738,6 +739,72 @@ els.btnGenerate.addEventListener('click', async function () {
 // ============================================================================
 // Report building helpers
 // ============================================================================
+function showIntegrationResults(results, profileName) {
+  var panel = els.integrationResults;
+  panel.replaceChildren();
+
+  // Header
+  var header = document.createElement('div');
+  header.className = 'ir-header';
+  header.textContent = 'Sent via profile: ' + profileName;
+  panel.appendChild(header);
+
+  // Result items
+  for (var i = 0; i < results.length; i++) {
+    var r = results[i];
+    var item = document.createElement('div');
+    item.className = 'ir-item ' + (r.success ? 'ir-success' : 'ir-fail');
+
+    var icon = document.createElement('span');
+    icon.className = 'ir-icon';
+    icon.textContent = r.success ? '\u2705' : '\u274C';
+    item.appendChild(icon);
+
+    var name = document.createElement('span');
+    name.className = 'ir-name';
+    name.textContent = r.integration;
+    item.appendChild(name);
+
+    var status = document.createElement('span');
+    status.className = 'ir-status';
+    if (r.success) {
+      status.textContent = 'OK';
+    } else {
+      status.textContent = r.error || 'Failed';
+    }
+    item.appendChild(status);
+
+    // Link if available (work item URL, issue URL)
+    if (r.workItemUrl) {
+      var link = document.createElement('a');
+      link.href = r.workItemUrl;
+      link.target = '_blank';
+      link.className = 'ir-link';
+      link.textContent = 'Open #' + (r.workItemId || '');
+      item.appendChild(link);
+    }
+    if (r.issueUrl) {
+      var issueLink = document.createElement('a');
+      issueLink.href = r.issueUrl;
+      issueLink.target = '_blank';
+      issueLink.className = 'ir-link';
+      issueLink.textContent = 'Open issue';
+      item.appendChild(issueLink);
+    }
+
+    panel.appendChild(item);
+  }
+
+  // Close button
+  var closeBtn = document.createElement('button');
+  closeBtn.className = 'ir-close';
+  closeBtn.textContent = '\u2715';
+  closeBtn.addEventListener('click', function () { panel.style.display = 'none'; });
+  panel.appendChild(closeBtn);
+
+  panel.style.display = 'block';
+}
+
 function parseUserAgent(ua) {
   var os = 'Unknown';
   if (ua.indexOf('Mac OS X') !== -1) os = 'macOS';
@@ -856,24 +923,30 @@ async function buildAndDownloadReport() {
     filename: filename,
     hasScreenshot: totalScreenshots > 0,
     consoleErrorCount: consoleErrorCount,
-    networkFailCount: networkFailCount
+    networkFailCount: networkFailCount,
+    integrations: [] // will be filled after send
   };
-  saveToHistory(metadata);
 
   // Send to integrations (profile-aware)
   var integrationOut = await sendToIntegrations(reportMD, metadata);
   var integrationResults = integrationOut.results;
   var matchedProfileName = integrationOut.profileName;
+
+  // Store integration results in history metadata (name, success, links)
+  metadata.integrations = integrationResults.map(function (r) {
+    return {
+      name: r.integration,
+      success: r.success,
+      error: r.error || null,
+      url: r.workItemUrl || r.issueUrl || null
+    };
+  });
+  metadata.profileName = matchedProfileName;
+
+  saveToHistory(metadata);
+
   if (integrationResults.length > 0) {
-    var successCount = integrationResults.filter(function (r) { return r.success; }).length;
-    var failCount = integrationResults.length - successCount;
-    var statusParts = [];
-    for (var ri = 0; ri < integrationResults.length; ri++) {
-      var r = integrationResults[ri];
-      statusParts.push(r.integration + ': ' + (r.success ? 'OK' : 'FAILED'));
-    }
-    var profileLabel = t('intProfileMatched') + ' \'' + matchedProfileName + '\'';
-    setStatus(profileLabel + ' — ' + statusParts.join(', '), failCount > 0 ? 'error' : 'success');
+    showIntegrationResults(integrationResults, matchedProfileName);
   }
 
   // Auto-clear state after report generation
@@ -1551,6 +1624,25 @@ function renderHistory(history) {
     }
     if (item.description) {
       itemEl.appendChild(createElement('div', { className: 'history-description', textContent: item.description }));
+    }
+
+    // Integration results badges with links
+    if (item.integrations && item.integrations.length > 0) {
+      var intDiv = createElement('div', { className: 'history-integrations' });
+      for (var ii = 0; ii < item.integrations.length; ii++) {
+        var intItem = item.integrations[ii];
+        var badge = createElement('span', {
+          className: 'history-int-badge ' + (intItem.success ? 'success' : 'fail')
+        });
+        if (intItem.url) {
+          var intLink = createElement('a', { href: intItem.url, target: '_blank', textContent: intItem.name + ' \u2197' });
+          badge.appendChild(intLink);
+        } else {
+          badge.textContent = intItem.name + (intItem.success ? ' \u2713' : ' \u2717');
+        }
+        intDiv.appendChild(badge);
+      }
+      itemEl.appendChild(intDiv);
     }
 
     list.appendChild(itemEl);

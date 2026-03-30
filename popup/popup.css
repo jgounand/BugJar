@@ -661,3 +661,27 @@ select:focus {
 .integration-help summary:hover { text-decoration: underline; }
 .integration-help ol { margin: 4px 0 0; padding-left: 18px; line-height: 1.6; }
 .integration-help li { color: var(--text); }
+
+/* -- Integration results panel -------------------------------------------- */
+.integration-results {
+  background: var(--bg-secondary); border: 1px solid var(--border);
+  border-radius: 8px; margin: 8px 16px; padding: 10px; position: relative;
+}
+.ir-header { font: 600 11px system-ui; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 6px; }
+.ir-item { display: flex; align-items: center; gap: 6px; padding: 4px 0; font-size: 12px; }
+.ir-icon { font-size: 14px; flex-shrink: 0; }
+.ir-name { font-weight: 600; color: var(--text); min-width: 80px; }
+.ir-status { color: var(--text-secondary); flex: 1; }
+.ir-success .ir-status { color: #27ae60; }
+.ir-fail .ir-status { color: #e74c3c; }
+.ir-link { color: var(--accent, #e94560); text-decoration: none; font-weight: 600; font-size: 11px; }
+.ir-link:hover { text-decoration: underline; }
+.ir-close { position: absolute; top: 6px; right: 8px; background: none; border: none; color: var(--text-secondary); cursor: pointer; font-size: 14px; }
+.ir-close:hover { color: var(--text); }
+/* -- History integration results ------------------------------------------ */
+.history-integrations { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+.history-int-badge { font-size: 10px; padding: 1px 6px; border-radius: 3px; text-decoration: none; }
+.history-int-badge.success { background: rgba(39,174,96,0.1); color: #27ae60; border: 1px solid rgba(39,174,96,0.2); }
+.history-int-badge.fail { background: rgba(231,76,60,0.1); color: #e74c3c; border: 1px solid rgba(231,76,60,0.2); }
+.history-int-badge a { color: inherit; text-decoration: none; }
+.history-int-badge a:hover { text-decoration: underline; }
