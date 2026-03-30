@@ -102,6 +102,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       handleGetActiveTabInfo(sendResponse);
       return true;
 
+    case 'fetchProxy':
+      handleFetchProxy(message, sendResponse);
+      return true;
+
     default:
       break;
   }
@@ -225,5 +229,25 @@ async function handleGetActiveTabInfo(sendResponse) {
     });
   } catch (err) {
     sendResponse({ success: false, error: err.message });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Fetch proxy — allows popup/integrations to call external APIs via the
+// background service worker (relaxed CORS, no extra host_permissions needed)
+// ---------------------------------------------------------------------------
+async function handleFetchProxy(message, sendResponse) {
+  try {
+    var response = await fetch(message.url, {
+      method: message.method || 'POST',
+      headers: message.headers || {},
+      body: message.body || undefined
+    });
+    var text = await response.text();
+    var json = null;
+    try { json = JSON.parse(text); } catch (e) { }
+    sendResponse({ success: response.ok, status: response.status, body: text, json: json });
+  } catch (e) {
+    sendResponse({ success: false, error: e.message });
   }
 }

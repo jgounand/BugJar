@@ -58,7 +58,11 @@ const TRANSLATIONS = {
     tabHistory: 'History',
     clearHistory: 'Clear All',
     historyEmpty: 'No reports yet',
-    reportCleared: 'Report saved! Fields cleared.'
+    reportCleared: 'Report saved! Fields cleared.',
+    // Settings tab
+    tabSettings: 'Settings',
+    settingsIntegrations: 'INTEGRATIONS',
+    saveSettings: 'Save Settings'
   },
   fr: {
     description: 'Description',
@@ -110,7 +114,11 @@ const TRANSLATIONS = {
     tabHistory: 'Historique',
     clearHistory: 'Tout effacer',
     historyEmpty: 'Aucun rapport',
-    reportCleared: 'Rapport sauvegard\u00e9 ! Champs effac\u00e9s.'
+    reportCleared: 'Rapport sauvegard\u00e9 ! Champs effac\u00e9s.',
+    // Settings tab
+    tabSettings: 'Param\u00e8tres',
+    settingsIntegrations: 'INT\u00c9GRATIONS',
+    saveSettings: 'Enregistrer'
   },
   es: {
     description: 'Descripci\u00f3n',
@@ -162,7 +170,11 @@ const TRANSLATIONS = {
     tabHistory: 'Historial',
     clearHistory: 'Borrar todo',
     historyEmpty: 'Sin informes',
-    reportCleared: '\u00a1Informe guardado! Campos limpiados.'
+    reportCleared: '\u00a1Informe guardado! Campos limpiados.',
+    // Settings tab
+    tabSettings: 'Ajustes',
+    settingsIntegrations: 'INTEGRACIONES',
+    saveSettings: 'Guardar'
   }
 };
 

@@ -628,3 +628,15 @@ select:focus {
 .help-dismiss:hover {
   background: #d63651;
 }
+
+/* -- Settings panel -------------------------------------------------------- */
+.settings-panel { padding: 12px 16px; }
+.settings-section-title { font: 600 11px system-ui; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; display: block; }
+.integration-group { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; margin-bottom: 6px; }
+.integration-toggle { display: flex; align-items: center; gap: 6px; font: 600 13px system-ui; color: var(--text); cursor: pointer; }
+.integration-toggle input[type="checkbox"] { accent-color: #e94560; }
+.integration-fields { padding: 6px 0 0 22px; display: flex; flex-direction: column; gap: 4px; }
+.settings-input { width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; font: 12px system-ui; background: var(--input-bg, #fff); color: var(--text); box-sizing: border-box; }
+.settings-input:focus { outline: none; border-color: var(--accent); }
+.settings-save-btn { width: 100%; padding: 10px; background: var(--accent, #e94560); color: #fff; border: none; border-radius: 6px; font: 600 13px system-ui; cursor: pointer; margin-top: 10px; }
+.settings-save-btn:hover { opacity: 0.9; }

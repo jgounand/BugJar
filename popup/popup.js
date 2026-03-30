@@ -736,7 +736,7 @@ els.btnGenerate.addEventListener('click', async function () {
   var summary = parts.length > 0 ? parts.join(', ') : 'no captures';
   setStatus('Report: ' + summary + ' \u2192 Downloading...');
 
-  buildAndDownloadReport();
+  await buildAndDownloadReport();
 });
 
 // ============================================================================
@@ -804,7 +804,7 @@ function downloadFile(filename, content, mimeType) {
   URL.revokeObjectURL(downloadUrl);
 }
 
-function buildAndDownloadReport() {
+async function buildAndDownloadReport() {
   var now = new Date();
   var dateStr = now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
 
@@ -863,6 +863,19 @@ function buildAndDownloadReport() {
     networkFailCount: networkFailCount
   };
   saveToHistory(metadata);
+
+  // Send to integrations
+  var integrationResults = await sendToIntegrations(reportMD, metadata);
+  if (integrationResults.length > 0) {
+    var successCount = integrationResults.filter(function (r) { return r.success; }).length;
+    var failCount = integrationResults.length - successCount;
+    var statusParts = [];
+    for (var ri = 0; ri < integrationResults.length; ri++) {
+      var r = integrationResults[ri];
+      statusParts.push(r.integration + ': ' + (r.success ? 'OK' : 'FAILED'));
+    }
+    setStatus('Sent: ' + statusParts.join(', '), failCount > 0 ? 'error' : 'success');
+  }
 
   // Auto-clear state after report generation
   state.steps = [];
@@ -1228,21 +1241,122 @@ document.getElementById('btn-help-dismiss').addEventListener('click', function (
 });
 
 // ============================================================================
-// Tab switching (Report / History)
+// Tab switching (Report / History / Settings)
 // ============================================================================
+function switchTab(activeTabId) {
+  var tabs = ['tab-report', 'tab-history', 'tab-settings'];
+  for (var ti = 0; ti < tabs.length; ti++) {
+    document.getElementById(tabs[ti]).classList.toggle('active', tabs[ti] === activeTabId);
+  }
+  document.querySelector('.content').style.display = activeTabId === 'tab-report' ? 'flex' : 'none';
+  document.getElementById('history-panel').style.display = activeTabId === 'tab-history' ? 'block' : 'none';
+  document.getElementById('settings-panel').style.display = activeTabId === 'tab-settings' ? 'block' : 'none';
+}
+
 document.getElementById('tab-report').addEventListener('click', function () {
-  document.getElementById('tab-report').classList.add('active');
-  document.getElementById('tab-history').classList.remove('active');
-  document.querySelector('.content').style.display = 'flex';
-  document.getElementById('history-panel').style.display = 'none';
+  switchTab('tab-report');
 });
 
 document.getElementById('tab-history').addEventListener('click', function () {
-  document.getElementById('tab-history').classList.add('active');
-  document.getElementById('tab-report').classList.remove('active');
-  document.querySelector('.content').style.display = 'none';
-  document.getElementById('history-panel').style.display = 'block';
+  switchTab('tab-history');
   loadHistory();
+});
+
+document.getElementById('tab-settings').addEventListener('click', function () {
+  switchTab('tab-settings');
+  loadSettingsForm();
+});
+
+// ============================================================================
+// Settings: load / save / toggle
+// ============================================================================
+var settingsCheckboxes = [
+  { id: 'int-slack-enabled', fieldsId: 'int-slack-fields' },
+  { id: 'int-azdo-enabled', fieldsId: 'int-azdo-fields' },
+  { id: 'int-email-enabled', fieldsId: 'int-email-fields' },
+  { id: 'int-github-enabled', fieldsId: 'int-github-fields' },
+  { id: 'int-webhook-enabled', fieldsId: 'int-webhook-fields' }
+];
+
+// Toggle field visibility when checkbox changes
+for (var sci = 0; sci < settingsCheckboxes.length; sci++) {
+  (function (cbId, fieldsId) {
+    document.getElementById(cbId).addEventListener('change', function () {
+      document.getElementById(fieldsId).style.display = this.checked ? 'flex' : 'none';
+    });
+  })(settingsCheckboxes[sci].id, settingsCheckboxes[sci].fieldsId);
+}
+
+async function loadSettingsForm() {
+  var config = await loadIntegrations();
+
+  // Slack
+  document.getElementById('int-slack-enabled').checked = config.slack.enabled;
+  document.getElementById('int-slack-webhook').value = config.slack.webhookUrl || '';
+  document.getElementById('int-slack-fields').style.display = config.slack.enabled ? 'flex' : 'none';
+
+  // Azure DevOps
+  document.getElementById('int-azdo-enabled').checked = config.azureDevOps.enabled;
+  document.getElementById('int-azdo-org').value = config.azureDevOps.organization || '';
+  document.getElementById('int-azdo-project').value = config.azureDevOps.project || '';
+  document.getElementById('int-azdo-pat').value = config.azureDevOps.pat || '';
+  document.getElementById('int-azdo-type').value = config.azureDevOps.workItemType || 'Bug';
+  document.getElementById('int-azdo-fields').style.display = config.azureDevOps.enabled ? 'flex' : 'none';
+
+  // Email
+  document.getElementById('int-email-enabled').checked = config.email.enabled;
+  document.getElementById('int-email-to').value = config.email.to || '';
+  document.getElementById('int-email-subject').value = config.email.subject || '';
+  document.getElementById('int-email-fields').style.display = config.email.enabled ? 'flex' : 'none';
+
+  // GitHub
+  document.getElementById('int-github-enabled').checked = config.github.enabled;
+  document.getElementById('int-github-owner').value = config.github.owner || '';
+  document.getElementById('int-github-repo').value = config.github.repo || '';
+  document.getElementById('int-github-token').value = config.github.token || '';
+  document.getElementById('int-github-fields').style.display = config.github.enabled ? 'flex' : 'none';
+
+  // Webhook
+  document.getElementById('int-webhook-enabled').checked = config.webhook.enabled;
+  document.getElementById('int-webhook-url').value = config.webhook.url || '';
+  document.getElementById('int-webhook-method').value = config.webhook.method || 'POST';
+  document.getElementById('int-webhook-headers').value = config.webhook.headers || '';
+  document.getElementById('int-webhook-fields').style.display = config.webhook.enabled ? 'flex' : 'none';
+}
+
+document.getElementById('btn-save-settings').addEventListener('click', async function () {
+  var config = {
+    slack: {
+      enabled: document.getElementById('int-slack-enabled').checked,
+      webhookUrl: document.getElementById('int-slack-webhook').value.trim()
+    },
+    azureDevOps: {
+      enabled: document.getElementById('int-azdo-enabled').checked,
+      organization: document.getElementById('int-azdo-org').value.trim(),
+      project: document.getElementById('int-azdo-project').value.trim(),
+      pat: document.getElementById('int-azdo-pat').value.trim(),
+      workItemType: document.getElementById('int-azdo-type').value
+    },
+    email: {
+      enabled: document.getElementById('int-email-enabled').checked,
+      to: document.getElementById('int-email-to').value.trim(),
+      subject: document.getElementById('int-email-subject').value.trim()
+    },
+    github: {
+      enabled: document.getElementById('int-github-enabled').checked,
+      owner: document.getElementById('int-github-owner').value.trim(),
+      repo: document.getElementById('int-github-repo').value.trim(),
+      token: document.getElementById('int-github-token').value.trim()
+    },
+    webhook: {
+      enabled: document.getElementById('int-webhook-enabled').checked,
+      url: document.getElementById('int-webhook-url').value.trim(),
+      method: document.getElementById('int-webhook-method').value,
+      headers: document.getElementById('int-webhook-headers').value.trim()
+    }
+  };
+  await saveIntegrations(config);
+  setStatus('Settings saved', 'success');
 });
 
 // ============================================================================

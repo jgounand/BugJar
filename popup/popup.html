@@ -71,6 +71,7 @@
   <div class="popup-tabs">
     <button class="popup-tab active" id="tab-report" data-i18n="tabReport">Report</button>
     <button class="popup-tab" id="tab-history" data-i18n="tabHistory">History</button>
+    <button class="popup-tab" id="tab-settings" data-i18n="tabSettings">Settings</button>
   </div>
 
   <!-- History panel (hidden by default) -->
@@ -85,6 +86,73 @@
     <div class="history-empty" id="history-empty">
       No reports yet
     </div>
+  </div>
+
+  <!-- Settings panel (hidden by default) -->
+  <div class="settings-panel" id="settings-panel" style="display:none;">
+    <label class="settings-section-title" data-i18n="settingsIntegrations">INTEGRATIONS</label>
+
+    <div class="integration-group">
+      <label class="integration-toggle">
+        <input type="checkbox" id="int-slack-enabled"> Slack
+      </label>
+      <div class="integration-fields" id="int-slack-fields" style="display:none;">
+        <input type="text" id="int-slack-webhook" placeholder="Webhook URL (https://hooks.slack.com/...)" class="settings-input">
+      </div>
+    </div>
+
+    <div class="integration-group">
+      <label class="integration-toggle">
+        <input type="checkbox" id="int-azdo-enabled"> Azure DevOps
+      </label>
+      <div class="integration-fields" id="int-azdo-fields" style="display:none;">
+        <input type="text" id="int-azdo-org" placeholder="Organization" class="settings-input">
+        <input type="text" id="int-azdo-project" placeholder="Project" class="settings-input">
+        <input type="password" id="int-azdo-pat" placeholder="Personal Access Token" class="settings-input">
+        <select id="int-azdo-type" class="settings-input">
+          <option value="Bug">Bug</option>
+          <option value="Task">Task</option>
+          <option value="User Story">User Story</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="integration-group">
+      <label class="integration-toggle">
+        <input type="checkbox" id="int-email-enabled"> Email
+      </label>
+      <div class="integration-fields" id="int-email-fields" style="display:none;">
+        <input type="email" id="int-email-to" placeholder="recipient@company.com" class="settings-input">
+        <input type="text" id="int-email-subject" placeholder="Subject (default: Bug Report)" class="settings-input">
+      </div>
+    </div>
+
+    <div class="integration-group">
+      <label class="integration-toggle">
+        <input type="checkbox" id="int-github-enabled"> GitHub Issues
+      </label>
+      <div class="integration-fields" id="int-github-fields" style="display:none;">
+        <input type="text" id="int-github-owner" placeholder="Owner (e.g. jgounand)" class="settings-input">
+        <input type="text" id="int-github-repo" placeholder="Repository (e.g. BugJar)" class="settings-input">
+        <input type="password" id="int-github-token" placeholder="GitHub Token (ghp_...)" class="settings-input">
+      </div>
+    </div>
+
+    <div class="integration-group">
+      <label class="integration-toggle">
+        <input type="checkbox" id="int-webhook-enabled"> Custom Webhook
+      </label>
+      <div class="integration-fields" id="int-webhook-fields" style="display:none;">
+        <input type="text" id="int-webhook-url" placeholder="https://your-endpoint.com/api/bugs" class="settings-input">
+        <select id="int-webhook-method" class="settings-input">
+          <option value="POST">POST</option>
+          <option value="PUT">PUT</option>
+        </select>
+        <input type="text" id="int-webhook-headers" placeholder='Custom headers (JSON): {"X-Api-Key": "..."}' class="settings-input">
+      </div>
+    </div>
+
+    <button class="settings-save-btn" id="btn-save-settings" data-i18n="saveSettings">Save Settings</button>
   </div>
 
   <!-- Main content -->
@@ -138,6 +206,7 @@
   <div class="status-bar" id="status-bar">Ready</div>
 
   <script src="../i18n.js"></script>
+  <script src="../integrations.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
