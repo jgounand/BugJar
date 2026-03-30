@@ -298,10 +298,33 @@ async function sendToSlackWithThread(config, reportMD, metadata, summary) {
   };
   var apiUrl = 'https://slack.com/api/chat.postMessage';
 
-  // 1. Post parent message (summary)
+  // Count screenshots upfront (needed for parent blocks + later)
+  var screenshotCount = 0;
+  if (metadata.steps) {
+    for (var sci2 = 0; sci2 < metadata.steps.length; sci2++) {
+      if (metadata.steps[sci2].screenshots) screenshotCount += metadata.steps[sci2].screenshots.length;
+    }
+  }
+
+  // 1. Post parent message (summary with blocks for rich formatting)
+  var blocks = [
+    {
+      type: 'section',
+      text: { type: 'mrkdwn', text: summary }
+    },
+    {
+      type: 'context',
+      elements: [
+        { type: 'mrkdwn', text: ':mag: ' + (metadata.consoleErrorCount || 0) + ' console error(s) | ' + (metadata.networkFailCount || 0) + ' network failure(s) | ' + screenshotCount + ' screenshot(s)' }
+      ]
+    },
+    { type: 'divider' }
+  ];
+
   var parentRes = await bgFetch(apiUrl, 'POST', headers, JSON.stringify({
     channel: config.channelId,
     text: summary,
+    blocks: blocks,
     unfurl_links: false
   }));
 
@@ -341,41 +364,24 @@ async function sendToSlackWithThread(config, reportMD, metadata, summary) {
     }));
   }
 
-  // 4. Post screenshots in thread (as file uploads)
-  if (metadata.steps) {
-    for (var si = 0; si < metadata.steps.length; si++) {
-      var step = metadata.steps[si];
-      if (step.screenshots) {
-        for (var sci = 0; sci < step.screenshots.length; sci++) {
-          var dataUrl = step.screenshots[sci];
-          if (!dataUrl || !dataUrl.startsWith('data:image')) continue;
-
-          var comment = ':camera: Step ' + (si + 1) + ' — Screenshot ' + (sci + 1);
-          if (step.description) comment += ': ' + step.description.substring(0, 100);
-
-          // Upload via Slack files.upload (send base64 as content)
-          var base64Data = dataUrl.split(',')[1];
-          var mimeType = dataUrl.match(/data:(.*?);/);
-          var ext = (mimeType && mimeType[1] === 'image/jpeg') ? 'jpg' : 'png';
-
-          await bgFetch('https://slack.com/api/files.upload', 'POST', headers, JSON.stringify({
-            channels: config.channelId,
-            thread_ts: threadTs,
-            filename: 'step-' + (si + 1) + '-screenshot-' + (sci + 1) + '.' + ext,
-            initial_comment: comment,
-            content: base64Data,
-            filetype: ext
-          }));
-        }
-      }
-    }
+  // 4. Post screenshots info in thread
+  if (screenshotCount > 0) {
+    await bgFetch(apiUrl, 'POST', headers, JSON.stringify({
+      channel: config.channelId,
+      thread_ts: threadTs,
+      text: ':camera: *' + screenshotCount + ' screenshot(s) captured* — download the report (.md) from BugJar History to view them.'
+    }));
   }
 
-  // 5. Post full report as text snippet in thread
+  // 5. Post clean report as text (strip base64 data URLs for readability)
+  var cleanReport = reportMD
+    .replace(/!\[([^\]]*)\]\(data:image[^)]+\)/g, ':frame_with_picture: _[$1 — see History for image]_')
+    .substring(0, 3500);
+
   await bgFetch(apiUrl, 'POST', headers, JSON.stringify({
     channel: config.channelId,
     thread_ts: threadTs,
-    text: ':page_facing_up: *Full Report*\n```' + reportMD.substring(0, 3500) + '```'
+    text: ':page_facing_up: *Full Report*\n' + cleanReport
   }));
 
   return {
