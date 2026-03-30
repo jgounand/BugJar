@@ -352,14 +352,47 @@ async function sendToAzureDevOps(config, reportMD, metadata) {
 }
 
 // -- EMAIL (mailto: link) --
+// Handles large reports by auto-downloading .md and opening mailto with summary
 function sendToEmail(config, reportMD, metadata) {
   try {
-    var subject = encodeURIComponent(config.subject || 'Bug Report — BugJar');
-    var body = encodeURIComponent(reportMD.substring(0, 2000)); // mailto has length limits
-    var mailto = 'mailto:' + encodeURIComponent(config.to) + '?subject=' + subject + '&body=' + body;
+    var categoryLabels = { bug: 'Bug', feature: 'Feature Request', question: 'Question', other: 'Other' };
+    var catLabel = categoryLabels[metadata.category] || metadata.category;
+    var subject = encodeURIComponent(
+      (config.subject || 'Bug Report') + ' \u2014 ' + catLabel + ' (' + (metadata.priority || 'Medium') + ')'
+    );
 
-    // Open in background — Chrome will open the default mail client
-    chrome.tabs.create({ url: mailto, active: false });
+    if (reportMD.length <= 1800) {
+      // Short report: send directly in mailto body
+      var body = encodeURIComponent(reportMD);
+      var mailto = 'mailto:' + encodeURIComponent(config.to) + '?subject=' + subject + '&body=' + body;
+      chrome.tabs.create({ url: mailto, active: false });
+    } else {
+      // Long report: download the .md file + open mailto with summary
+      var filename = 'bugjar-report-' + new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19) + '.md';
+
+      // Download the file (this is the ONLY case where we auto-download)
+      var blob = new Blob([reportMD], { type: 'text/markdown' });
+      var downloadUrl = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(downloadUrl);
+
+      // Open mailto with short summary + instruction
+      var summary = 'URL: ' + (metadata.url || 'Unknown') + '\n\n';
+      summary += 'Description: ' + (metadata.description || '').substring(0, 200) + '\n\n';
+      if (metadata.consoleErrorCount > 0) summary += 'Console errors: ' + metadata.consoleErrorCount + '\n';
+      if (metadata.networkFailCount > 0) summary += 'Network failures: ' + metadata.networkFailCount + '\n';
+      summary += '\n---\nFull report attached as: ' + filename + '\n';
+      summary += '(The file was downloaded to your Downloads folder)';
+
+      var body = encodeURIComponent(summary);
+      var mailto = 'mailto:' + encodeURIComponent(config.to) + '?subject=' + subject + '&body=' + body;
+      chrome.tabs.create({ url: mailto, active: false });
+    }
 
     return { integration: 'Email', success: true };
   } catch (e) {

@@ -1677,3 +1677,18 @@ async function clearAllHistory() {
 document.getElementById('btn-clear-history').addEventListener('click', function () {
   clearAllHistory();
 });
+
+// ============================================================================
+// Auto-inject content script on popup open for monitoring
+// ============================================================================
+(async function autoInject() {
+  var tabId = await ensureContentScript();
+  var indicator = document.getElementById('monitoring-indicator');
+  if (tabId) {
+    indicator.textContent = '\u25CF ' + t('monitoringActive');
+    indicator.className = 'monitoring-indicator active';
+  } else {
+    indicator.textContent = '\u25CB ' + t('monitoringInactive');
+    indicator.className = 'monitoring-indicator inactive';
+  }
+})();

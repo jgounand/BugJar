@@ -89,7 +89,10 @@ const TRANSLATIONS = {
     intUrlPattern: 'URL Pattern',
     intUrlHint: 'Use * as wildcard. This profile\'s integrations will only activate for matching URLs.',
     intAddProfile: 'New profile name:',
-    intProfileMatched: 'Profile matched'
+    intProfileMatched: 'Profile matched',
+    // Monitoring indicator
+    monitoringActive: 'Monitoring active',
+    monitoringInactive: 'Cannot monitor this page'
   },
   fr: {
     description: 'Description',
@@ -171,7 +174,10 @@ const TRANSLATIONS = {
     intUrlPattern: 'Pattern URL',
     intUrlHint: 'Utilisez * comme joker. Les int\u00e9grations de ce profil ne s\'activeront que pour les URLs correspondantes.',
     intAddProfile: 'Nom du nouveau profil :',
-    intProfileMatched: 'Profil d\u00e9tect\u00e9'
+    intProfileMatched: 'Profil d\u00e9tect\u00e9',
+    // Monitoring indicator
+    monitoringActive: 'Surveillance active',
+    monitoringInactive: 'Impossible de surveiller cette page'
   },
   es: {
     description: 'Descripci\u00f3n',
@@ -253,7 +259,10 @@ const TRANSLATIONS = {
     intUrlPattern: 'Patr\u00f3n URL',
     intUrlHint: 'Use * como comod\u00edn. Las integraciones de este perfil solo se activar\u00e1n para URLs coincidentes.',
     intAddProfile: 'Nombre del nuevo perfil:',
-    intProfileMatched: 'Perfil detectado'
+    intProfileMatched: 'Perfil detectado',
+    // Monitoring indicator
+    monitoringActive: 'Monitoreo activo',
+    monitoringInactive: 'No se puede monitorear esta p\u00e1gina'
   }
 };
 
