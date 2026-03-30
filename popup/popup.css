@@ -640,3 +640,9 @@ select:focus {
 .settings-input:focus { outline: none; border-color: var(--accent); }
 .settings-save-btn { width: 100%; padding: 10px; background: var(--accent, #e94560); color: #fff; border: none; border-radius: 6px; font: 600 13px system-ui; cursor: pointer; margin-top: 10px; }
 .settings-save-btn:hover { opacity: 0.9; }
+.integration-help { margin-top: 6px; }
+.integration-help details { font-size: 11px; color: var(--text-secondary); }
+.integration-help summary { cursor: pointer; color: var(--accent, #e94560); font-weight: 600; font-size: 11px; margin-bottom: 4px; }
+.integration-help summary:hover { text-decoration: underline; }
+.integration-help ol { margin: 4px 0 0; padding-left: 18px; line-height: 1.6; }
+.integration-help li { color: var(--text); }

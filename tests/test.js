@@ -70,34 +70,16 @@ const startIdx = i18nSource.indexOf(startMarker);
 // Find the matching closing brace by counting brace depth
 let depth = 0;
 let endIdx = -1;
-for (let i = startIdx + startMarker.length - 1; i < i18nSource.length; i++) {
-  if (i18nSource[i] === '{') depth++;
-  else if (i18nSource[i] === '}') {
-    depth--;
-    if (depth === 0) { endIdx = i + 1; break; }
-  }
-}
-const objectText = i18nSource.substring(startIdx + startMarker.length - 1, endIdx);
-
-// Parse the JS object literal into JSON:
-// - Remove single-line comments
-// - Convert single-quoted strings to double-quoted (protecting escaped singles)
-// - Remove trailing commas before } or ]
-let jsonText = objectText
-  .replace(/\/\/.*$/gm, '')                    // remove // comments
-  .replace(/\\'/g, '\u0000ESCAPED_SQUOTE')     // protect escaped single quotes
-  .replace(/'/g, '"')                           // single -> double quotes
-  .replace(/\u0000ESCAPED_SQUOTE/g, "'")       // restore as unescaped ' (valid inside double-quoted JSON strings)
-  .replace(/,(\s*[}\]])/g, '$1')               // remove trailing commas
-  .replace(/(\s*)(\w+)(\s*:)/gm, '$1"$2"$3'); // quote unquoted property keys
-
+// Execute i18n.js in a sandboxed context to extract TRANSLATIONS natively
+const vm = require('vm');
 let TRANSLATIONS;
 try {
-  TRANSLATIONS = JSON.parse(jsonText);
+  // Wrap in a function that returns TRANSLATIONS (const is block-scoped in vm)
+  const wrappedSource = '(function() { ' + i18nSource + '\n return TRANSLATIONS; })()';
+  TRANSLATIONS = vm.runInNewContext(wrappedSource, {});
+  if (!TRANSLATIONS) throw new Error('TRANSLATIONS not found in i18n.js');
 } catch (e) {
-  console.error('Failed to parse TRANSLATIONS from i18n.js:', e.message);
-  // Show context around the error
-  console.error('First 200 chars of jsonText:', jsonText.substring(0, 200));
+  console.error('Failed to load TRANSLATIONS from i18n.js:', e.message);
   process.exit(1);
 }
 

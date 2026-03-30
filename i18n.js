@@ -62,7 +62,28 @@ const TRANSLATIONS = {
     // Settings tab
     tabSettings: 'Settings',
     settingsIntegrations: 'INTEGRATIONS',
-    saveSettings: 'Save Settings'
+    saveSettings: 'Save Settings',
+    // Integration guides
+    intHowTo: 'How to configure',
+    intSlackStep1: 'Go to your Slack workspace settings',
+    intSlackStep2: 'Apps > Manage > Incoming Webhooks (or search "Incoming Webhooks")',
+    intSlackStep3: 'Click "Add to Slack", choose the channel to receive bug reports',
+    intSlackStep4: 'Copy the Webhook URL and paste it above',
+    intAzdoStep1: 'Go to https://dev.azure.com/{org}',
+    intAzdoStep2: 'Click your avatar (top right) > Personal access tokens',
+    intAzdoStep3: 'Click "+ New Token", name it "BugJar"',
+    intAzdoStep4: 'Scopes: select only "Work Items: Read & Write"',
+    intAzdoStep5: 'Copy the token and paste it above. A Stakeholder (free) account is sufficient.',
+    intEmailStep1: 'Enter the email address of the person who should receive bug reports',
+    intEmailStep2: 'When you generate a report, your default mail client will open with the report pre-filled',
+    intEmailStep3: 'You can customize the subject line (optional)',
+    intGithubStep1: 'Go to github.com > Settings > Developer settings > Personal access tokens > Fine-grained tokens',
+    intGithubStep2: 'Click "Generate new token", select the repository',
+    intGithubStep3: 'Permissions: Issues > Read and Write',
+    intGithubStep4: 'Copy the token (ghp_...) and paste it above',
+    intWebhookStep1: 'Enter any HTTPS URL that accepts JSON payloads',
+    intWebhookStep2: 'Works with: Jira, n8n, Zapier, Make, Teams, or any custom API',
+    intWebhookStep3: 'Add custom headers if your endpoint requires authentication (JSON format)'
   },
   fr: {
     description: 'Description',
@@ -118,7 +139,27 @@ const TRANSLATIONS = {
     // Settings tab
     tabSettings: 'Param\u00e8tres',
     settingsIntegrations: 'INT\u00c9GRATIONS',
-    saveSettings: 'Enregistrer'
+    saveSettings: 'Enregistrer',
+    intHowTo: 'Comment configurer',
+    intSlackStep1: 'Allez dans les param\u00e8tres de votre workspace Slack',
+    intSlackStep2: 'Apps > G\u00e9rer > Incoming Webhooks (ou cherchez "Incoming Webhooks")',
+    intSlackStep3: 'Cliquez "Add to Slack", choisissez le channel pour les rapports de bugs',
+    intSlackStep4: 'Copiez l\'URL du Webhook et collez-la ci-dessus',
+    intAzdoStep1: 'Allez sur https://dev.azure.com/{org}',
+    intAzdoStep2: 'Cliquez sur votre avatar (en haut \u00e0 droite) > Personal access tokens',
+    intAzdoStep3: 'Cliquez "+ New Token", nommez-le "BugJar"',
+    intAzdoStep4: 'Scopes : s\u00e9lectionnez uniquement "Work Items: Read & Write"',
+    intAzdoStep5: 'Copiez le token et collez-le ci-dessus. Un compte Stakeholder (gratuit) suffit.',
+    intEmailStep1: 'Entrez l\'adresse email de la personne qui recevra les rapports',
+    intEmailStep2: 'Quand vous g\u00e9n\u00e9rez un rapport, votre client mail s\'ouvrira avec le rapport pr\u00e9-rempli',
+    intEmailStep3: 'Vous pouvez personnaliser le sujet (optionnel)',
+    intGithubStep1: 'Allez sur github.com > Settings > Developer settings > Personal access tokens > Fine-grained tokens',
+    intGithubStep2: 'Cliquez "Generate new token", s\u00e9lectionnez le repository',
+    intGithubStep3: 'Permissions : Issues > Read and Write',
+    intGithubStep4: 'Copiez le token (ghp_...) et collez-le ci-dessus',
+    intWebhookStep1: 'Entrez n\'importe quelle URL HTTPS qui accepte du JSON',
+    intWebhookStep2: 'Compatible avec : Jira, n8n, Zapier, Make, Teams, ou toute API custom',
+    intWebhookStep3: 'Ajoutez des headers custom si votre endpoint requiert une authentification (format JSON)'
   },
   es: {
     description: 'Descripci\u00f3n',
@@ -174,7 +215,27 @@ const TRANSLATIONS = {
     // Settings tab
     tabSettings: 'Ajustes',
     settingsIntegrations: 'INTEGRACIONES',
-    saveSettings: 'Guardar'
+    saveSettings: 'Guardar',
+    intHowTo: 'C\u00f3mo configurar',
+    intSlackStep1: 'Vaya a la configuraci\u00f3n de su workspace de Slack',
+    intSlackStep2: 'Apps > Administrar > Incoming Webhooks (o busque "Incoming Webhooks")',
+    intSlackStep3: 'Haga clic en "Add to Slack", elija el canal para recibir reportes de bugs',
+    intSlackStep4: 'Copie la URL del Webhook y p\u00e9guela arriba',
+    intAzdoStep1: 'Vaya a https://dev.azure.com/{org}',
+    intAzdoStep2: 'Haga clic en su avatar (arriba a la derecha) > Personal access tokens',
+    intAzdoStep3: 'Haga clic en "+ New Token", n\u00f3mbrelo "BugJar"',
+    intAzdoStep4: 'Scopes: seleccione solo "Work Items: Read & Write"',
+    intAzdoStep5: 'Copie el token y p\u00e9guelo arriba. Una cuenta Stakeholder (gratuita) es suficiente.',
+    intEmailStep1: 'Ingrese la direcci\u00f3n de email de la persona que recibir\u00e1 los reportes',
+    intEmailStep2: 'Al generar un reporte, su cliente de correo se abrir\u00e1 con el reporte pre-rellenado',
+    intEmailStep3: 'Puede personalizar el asunto (opcional)',
+    intGithubStep1: 'Vaya a github.com > Settings > Developer settings > Personal access tokens > Fine-grained tokens',
+    intGithubStep2: 'Haga clic en "Generate new token", seleccione el repositorio',
+    intGithubStep3: 'Permisos: Issues > Read and Write',
+    intGithubStep4: 'Copie el token (ghp_...) y p\u00e9guelo arriba',
+    intWebhookStep1: 'Ingrese cualquier URL HTTPS que acepte payloads JSON',
+    intWebhookStep2: 'Compatible con: Jira, n8n, Zapier, Make, Teams, o cualquier API personalizada',
+    intWebhookStep3: 'Agregue headers personalizados si su endpoint requiere autenticaci\u00f3n (formato JSON)'
   }
 };
 
