@@ -6,7 +6,8 @@
 
 <p align="center">
   <strong>Capture bugs in a jar.</strong><br>
-  Screenshot, console, network, annotations — generates AI-ready reports.
+  Step-based bug reproduction with screenshots, console, network, annotations.<br>
+  Sends reports to Slack, Azure DevOps, GitHub, Email, or any webhook.
 </p>
 
 <p align="center">
@@ -19,11 +20,7 @@
 
 ---
 
-## What it does
-
-A Chrome extension that lets **anyone** — developers, QA, clients, integrators — report bugs with full context. The generated report is a structured `.md` file designed for **AI assistants** (Claude, ChatGPT) to understand and fix the issue.
-
-### Screenshots
+## Screenshots
 
 <p align="center">
   <img src="screenshots/popup-report.png" alt="Report tab" width="280" />
@@ -39,127 +36,109 @@ A Chrome extension that lets **anyone** — developers, QA, clients, integrators
   <em>Settings</em>
 </p>
 
-### Popup — Capture & Report
+---
+
+## What it does
+
+A Chrome extension that lets **anyone** — developers, QA, clients, integrators — report bugs with full context using a **step-by-step reproduction flow**. Reports are sent to your tools (Azure DevOps, GitHub, Slack) and saved locally for download.
+
+### How it works
+
+1. **Open BugJar** on the page with the bug — monitoring starts automatically
+2. **Describe** the issue + choose category and priority
+3. **Add reproduction steps** — each step can capture its own screenshots, DOM elements, console logs, and network requests
+4. **Generate Report** — sends to configured integrations + saves to History
+5. **Download** the `.md` report from History whenever you need it
+
+### Step-based reproduction
+
+Each bug report is organized into **steps**. One step for a simple bug, multiple steps for complex flows:
 
 ```
-┌─────────────────────────────────────┐
-│  🐞 BugJar           v2.2.0  ? ✕   │
-│  [EN] [FR] [ES]                     │
-├──────────┬──────────────────────────┤
-│ Report   │ History                  │
-├──────────┴──────────────────────────┤
-│                                     │
-│  Description                        │
-│  ┌─────────────────────────────┐    │
-│  │ The save button doesn't...  │    │
-│  └─────────────────────────────┘    │
-│                                     │
-│  Steps to reproduce                 │
-│  ┌─────────────────────────────┐    │
-│  │ 1. Go to /settings          │    │
-│  │ 2. Click Save               │    │
-│  │ 3. See error in console     │    │
-│  └─────────────────────────────┘    │
-│                                     │
-│  Category: [Bug ▾]  Priority: [High]│
-│                                     │
-│  ┌─────────────────────────────┐    │
-│  │     ⚡ Capture All          │    │
-│  └─────────────────────────────┘    │
-│                                     │
-│  📸 Screenshot ✓  🖱️ Element ✓     │
-│  📋 Console ✓     🌐 Network ✓     │
-│                                     │
-│  ┌─────────────────────────────┐    │
-│  │     📄 Generate Report      │    │
-│  └─────────────────────────────┘    │
-│                                     │
-│  Status: Ready                      │
-└─────────────────────────────────────┘
-```
+Step 1: "Go to /settings"
+  └── 📸 screenshot of the page
 
-### Annotation Editor
-
-```
-┌─────────────────────────────────────────────┐
-│  ✏️ Pen  ➡️ Arrow  ▢ Rect  T Text          │
-│  🔴 🔵 🟢 🟡 ⚫  Size: ━━━●━━  ↩ Undo  ✓ │
-├─────────────────────────────────────────────┤
-│                                             │
-│   ┌─────────────────────────────────┐       │
-│   │                                 │       │
-│   │    Your page screenshot         │       │
-│   │    with annotations drawn       │       │
-│   │    on top ──────────> ⬅️        │       │
-│   │                                 │       │
-│   └─────────────────────────────────┘       │
-│                                             │
-└─────────────────────────────────────────────┘
-```
-
-### Element Inspector
-
-```
-┌──────────────────────────────────────────────────┐
-│  ⚠️ Click on any element to select it   [Cancel] │  ← Red banner
-├──────────────────────────────────────────────────┤
-│                                                  │
-│   ┌──── div.kanban-column  320x450 ────┐         │  ← Tooltip follows cursor
-│   │  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  │         │
-│   │  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  │         │  ← Red highlight on hover
-│   │  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  │         │
-│   └────────────────────────────────────┘         │
-│                                                  │
-│   After click: green persistent highlight        │
-│   ┌── div.kanban-column (320x450) ──┐            │  ← Green + badge
-│   │   ████████████████████████████  │            │
-│   └─────────────────────────────────┘            │
-│                                                  │
-│   Toast: "Element captured: div.kanban-column" ──┘  │
-└──────────────────────────────────────────────────┘
-```
-
-### History Tab
-
-```
-┌─────────────────────────────────────┐
-│ Report   │ History                  │
-├──────────┴──────────────────────────┤
-│  3 reports              [Clear All] │
-│                                     │
-│  ┌─────────────────────────────┐    │
-│  │ Mar 29, 10:30  High Bug  ✕ │    │
-│  │ https://app.example.com/... │    │
-│  │ The save button doesn't...  │    │
-│  └─────────────────────────────┘    │
-│                                     │
-│  ┌─────────────────────────────┐    │
-│  │ Mar 28, 15:45  Med Feature  │    │
-│  │ https://app.example.com/... │    │
-│  │ Add filter by project...    │    │
-│  └─────────────────────────────┘    │
-└─────────────────────────────────────┘
+Step 2: "Click Save"
+  └── 🖱️ button.btn-save (selected element)
+  └── 📋 3 console errors (with stack traces)
+  └── 🌐 POST /api/settings → 500 (with response body)
+  └── 📸 screenshot showing the error
 ```
 
 ## Features
 
+### Capture
+
 | Feature | Description |
 |---------|-------------|
-| **Capture All** | One click captures screenshot + console + network |
-| **Screenshot** | Capture visible tab + annotate (pen, arrows, rectangles, text) |
-| **Console** | Last 100 messages with timestamps + **stack traces** for errors |
-| **Network** | XHR/fetch requests with status, duration + **response body** for 4xx/5xx |
-| **DOM Inspector** | Click any element → captures selector, XPath, computed styles |
-| **Framework Detection** | Detects Angular, React, Vue, jQuery with version |
-| **SPA Navigation** | Tracks pushState/replaceState route changes |
-| **Storage Keys** | Captures localStorage/sessionStorage key names + sizes |
-| **Multi-screenshots** | Up to 5 screenshots per report |
-| **AI-Ready Report** | Structured `.md` file optimized for Claude/ChatGPT |
-| **History** | View and manage past reports |
-| **i18n** | English, French, Spanish |
-| **Dark Mode** | Follows system preference |
-| **Auto-Update** | Checks GitHub releases every 24h, shows badge |
-| **Keyboard Shortcuts** | `Ctrl+Shift+B` open, `Ctrl+Shift+J` capture all |
+| **Auto-monitoring** | Console + network captured automatically when popup opens |
+| **Screenshot** | Capture visible tab + annotate (pen, arrows, rectangles, text, colors) |
+| **Console** | Last 100 messages with timestamps + stack traces for errors |
+| **Network** | XHR/fetch requests with status, duration + response body for 4xx/5xx |
+| **DOM Inspector** | Click any element → tag, classes, CSS selector, XPath, computed styles |
+| **Multi-elements** | Select multiple elements per step (accumulates, not replaces) |
+| **Multi-screenshots** | Multiple screenshots per step |
+| **Framework detection** | Detects Angular, React, Vue, jQuery with version |
+| **SPA navigation** | Tracks pushState/replaceState route changes |
+| **Storage keys** | Captures localStorage/sessionStorage key names + sizes |
+| **Environment** | Resolution, DPR, OS, browser, language, timezone, touch support |
+
+### Integrations
+
+Reports are sent **automatically** to all enabled integrations when you generate a report. Sent in parallel for speed.
+
+| Integration | What it does | Screenshots |
+|-------------|-------------|-------------|
+| **🔷 Azure DevOps** | Creates Work Item with HTML body (images embedded) | ✅ Inline `<img>` |
+| **🐙 GitHub Issues** | Creates issue with labels (bug/enhancement/priority) | Text only |
+| **💬 Slack** | Sends formatted message to channel via webhook | Text only |
+| **✉️ Email** | Opens mail client (short) or downloads .md + summary (long) | Via attachment |
+| **🔗 Custom Webhook** | POST/PUT JSON to any URL (Jira, n8n, Zapier, Teams...) | In JSON payload |
+
+### Per-site profiles
+
+Each website can have its **own integration config**:
+
+```
+Profile: *.toto.com  → GitHub repo-toto
+Profile: *.titi.fr   → Azure DevOps project-A
+Profile: *.tata.fr   → Azure DevOps project-B
+Profile: Default     → Slack + Email (fallback for unmatched sites)
+```
+
+BugJar auto-detects which profile to use based on the current page URL.
+
+### Category auto-mapping
+
+The report category automatically maps to the correct type on each platform:
+
+| BugJar Category | Azure DevOps | GitHub Labels | Slack |
+|-----------------|-------------|---------------|-------|
+| Bug | Bug | `bug` | :beetle: Bug |
+| Feature Request | User Story | `enhancement` | :bulb: Feature |
+| Question | Task | `question` | :question: Question |
+| Other | *(settings default)* | — | :memo: Other |
+
+Azure DevOps type can be set to **Auto** (recommended) or forced to a specific type.
+
+### History
+
+- All reports saved locally with full content
+- **Download** button (⬇️) to get the `.md` file whenever you need it
+- Integration results with **clickable links** to work items / issues
+- Platform icons (🔷 🐙 💬 ✉️ 🔗) show where each report was sent
+- Delete individual reports or clear all
+
+### More
+
+| Feature | Description |
+|---------|-------------|
+| **i18n** | English, French, Spanish with language selector |
+| **Dark mode** | Follows system preference automatically |
+| **Onboarding** | Built-in help guide (?) for new users |
+| **Auto-update** | Checks GitHub releases every 24h, shows badge |
+| **Keyboard shortcuts** | `Ctrl+Shift+B` open, `Ctrl+Shift+J` capture all |
+| **Per-integration guides** | Step-by-step setup instructions for each platform |
 
 ## Install
 
@@ -172,50 +151,48 @@ A Chrome extension that lets **anyone** — developers, QA, clients, integrators
 
 ## Generated Report
 
-The `.md` file contains everything an AI needs to fix the bug:
+The `.md` file is structured for AI consumption (Claude, ChatGPT):
 
 ```markdown
 # Bug Report / Feedback
-**URL:** https://app.example.com/dashboard
+**URL:** https://app.example.com/settings
 **Category:** Bug  |  **Priority:** High
 
 ## Environment
-- Resolution: 1920x1080 (viewport: 1280x720)
 - Browser: Chrome 120.0.0.0
 - Framework: Angular 21.0.0
+- Resolution: 1920x1080
 
 ## Description
 The save button doesn't respond after editing...
 
-## Steps to Reproduce
-1. Go to /settings
-2. Edit any field
-3. Click Save → nothing happens
+## Reproduction Steps
 
-## Screenshot
-![Screenshot](feedback-screenshot.png)
+### Step 1: Go to /settings
+![Step 1 screenshot](data:image/jpeg;base64,...)
 
-## Selected DOM Element
-Tag: button.btn-save
-Selector: #settings-form > .actions > button.btn-save
+### Step 2: Click Save
+**Selected elements:**
+- `button.btn-save` — #form > .actions > button (120x40)
 
-## Console Logs (3 errors)
+**Console (3 errors):**
 10:30:01 [ERROR] TypeError: Cannot read property 'save' of undefined
   at SettingsComponent.onSave (settings.component.ts:45)
 
-## Network Requests (1 failed)
-| Method | Status | URL | Duration |
-|--------|--------|-----|----------|
+**Failed requests:**
 | POST | 500 | /api/settings | 234ms |
 > Response: {"error":"Column 'NAME' cannot be null"}
+
+![Step 2 screenshot](data:image/jpeg;base64,...)
 ```
 
-## Keyboard Shortcuts
+## Security
 
-| Shortcut | Action |
-|----------|--------|
-| `Ctrl+Shift+B` (Mac: `Cmd+Shift+B`) | Open BugJar popup |
-| `Ctrl+Shift+J` (Mac: `Cmd+Shift+J`) | Quick capture all |
+- **Zero secrets in source code** — all credentials stored per-user in `chrome.storage.local`
+- **No data sent anywhere** except to the integrations you explicitly configure
+- **No analytics, no telemetry, no tracking**
+- External API calls routed through background service worker (no CORS issues, no extra permissions)
+- Open-source — inspect every line of code
 
 ## Tech
 
@@ -225,9 +202,16 @@ Selector: #settings-form > .actions > button.btn-save
 - Zero external dependencies
 - 96 unit tests (`node tests/test.js`)
 
+## Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+Shift+B` (Mac: `Cmd+Shift+B`) | Open BugJar popup |
+| `Ctrl+Shift+J` (Mac: `Cmd+Shift+J`) | Quick capture all |
+
 ## License
 
-Current versions (v1.x, v2.x): **MIT License** — free for personal and commercial use.
+Current versions (v1.x–v4.x): **MIT License** — free for personal and commercial use.
 
 Future versions may be released under a different license. See [LICENSE](LICENSE) for details.
 
