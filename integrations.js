@@ -307,15 +307,27 @@ async function sendToSlackWithThread(config, reportMD, metadata, summary) {
   }
 
   // 1. Post parent message (summary with blocks for rich formatting)
+  var priorityEmojis = { critical: ':rotating_light:', high: ':red_circle:', medium: ':large_blue_circle:', low: ':white_circle:' };
+  var pEmoji = priorityEmojis[metadata.priority] || ':large_blue_circle:';
+
   var blocks = [
     {
+      type: 'header',
+      text: { type: 'plain_text', text: (metadata.category === 'bug' ? '\uD83E\uDEB2 ' : '\uD83D\uDCA1 ') + (metadata.description || 'Bug Report').substring(0, 100) }
+    },
+    {
       type: 'section',
-      text: { type: 'mrkdwn', text: summary }
+      fields: [
+        { type: 'mrkdwn', text: '*Category:*\n' + catLabel },
+        { type: 'mrkdwn', text: '*Priority:*\n' + pEmoji + ' ' + (metadata.priority || 'medium') },
+        { type: 'mrkdwn', text: '*URL:*\n<' + (metadata.url || '#') + '>' },
+        { type: 'mrkdwn', text: '*Status:*\n:new: New' }
+      ]
     },
     {
       type: 'context',
       elements: [
-        { type: 'mrkdwn', text: ':mag: ' + (metadata.consoleErrorCount || 0) + ' console error(s) | ' + (metadata.networkFailCount || 0) + ' network failure(s) | ' + screenshotCount + ' screenshot(s)' }
+        { type: 'mrkdwn', text: ':mag: ' + (metadata.consoleErrorCount || 0) + ' error(s) \u2022 ' + (metadata.networkFailCount || 0) + ' failure(s) \u2022 ' + screenshotCount + ' screenshot(s) \u2022 ID: `' + (metadata.id || '?') + '`' }
       ]
     },
     { type: 'divider' }
@@ -334,6 +346,32 @@ async function sendToSlackWithThread(config, reportMD, metadata, summary) {
   }
 
   var threadTs = parentRes.json.ts;
+
+  // 1b. Add 🆕 reaction for status tracking
+  await bgFetch('https://slack.com/api/reactions.add', 'POST', headers, JSON.stringify({
+    channel: config.channelId,
+    timestamp: threadTs,
+    name: 'new'
+  }));
+
+  // 1c. Post structured metadata (machine-parseable by Claude MCP)
+  var metaBlock = ':robot_face: *Metadata (for automation)*\n```json\n' + JSON.stringify({
+    bugjar_id: metadata.id,
+    url: metadata.url,
+    category: metadata.category,
+    priority: metadata.priority,
+    console_errors: metadata.consoleErrorCount || 0,
+    network_failures: metadata.networkFailCount || 0,
+    screenshots: screenshotCount,
+    timestamp: metadata.date || new Date().toISOString(),
+    status: 'new'
+  }, null, 2) + '\n```';
+
+  await bgFetch(apiUrl, 'POST', headers, JSON.stringify({
+    channel: config.channelId,
+    thread_ts: threadTs,
+    text: metaBlock
+  }));
 
   // 2. Post console errors in thread (if any)
   if (metadata.consoleErrorCount > 0) {
