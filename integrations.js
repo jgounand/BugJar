@@ -278,6 +278,35 @@ async function sendToSlack(config, reportMD, metadata) {
   }
 }
 
+// -- Markdown → HTML converter (basic, for Azure DevOps ReproSteps) --
+function markdownToHtml(md) {
+  return md
+    // Images: ![alt](src) → <img> (handles data URLs)
+    .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" style="max-width:100%;margin:8px 0;">')
+    // Headers
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    // Bold
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    // Code blocks
+    .replace(/```([^`]*)```/gs, '<pre style="background:#f4f4f4;padding:8px;border-radius:4px;overflow-x:auto;font-size:12px;">$1</pre>')
+    // Inline code
+    .replace(/`([^`]+)`/g, '<code style="background:#f0f0f0;padding:1px 4px;border-radius:2px;">$1</code>')
+    // Tables (basic)
+    .replace(/\|(.+)\|/g, function (match) {
+      var cells = match.split('|').filter(function (c) { return c.trim(); });
+      if (cells[0] && cells[0].trim().match(/^[-:]+$/)) return ''; // separator row
+      return '<tr>' + cells.map(function (c) { return '<td style="padding:4px 8px;border:1px solid #ddd;">' + c.trim() + '</td>'; }).join('') + '</tr>';
+    })
+    // Lists
+    .replace(/^- (.+)$/gm, '<li>$1</li>')
+    // Blockquotes
+    .replace(/^> (.+)$/gm, '<blockquote style="border-left:3px solid #ddd;padding-left:8px;color:#666;">$1</blockquote>')
+    // Line breaks
+    .replace(/\n/g, '<br>');
+}
+
 // -- AZURE DEVOPS --
 async function sendToAzureDevOps(config, reportMD, metadata) {
   try {
@@ -290,9 +319,12 @@ async function sendToAzureDevOps(config, reportMD, metadata) {
 
     var title = wiType + ': ' + (metadata.description || 'Bug Report').substring(0, 100);
 
+    // Convert markdown to HTML for ReproSteps (includes screenshots as <img> with data URLs)
+    var htmlBody = markdownToHtml(reportMD);
+
     var body = [
       { op: 'add', path: '/fields/System.Title', value: title },
-      { op: 'add', path: '/fields/Microsoft.VSTS.TCM.ReproSteps', value: reportMD.replace(/\n/g, '<br>') },
+      { op: 'add', path: '/fields/Microsoft.VSTS.TCM.ReproSteps', value: htmlBody },
       { op: 'add', path: '/fields/Microsoft.VSTS.Common.Priority', value: metadata.priority === 'critical' ? 1 : metadata.priority === 'high' ? 2 : metadata.priority === 'medium' ? 3 : 4 }
     ];
 
