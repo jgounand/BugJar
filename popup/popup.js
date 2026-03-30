@@ -893,10 +893,9 @@ async function buildAndDownloadReport() {
     url: url, title: title, userAgent: userAgent, environment: environment
   };
 
-  // Build Claude-friendly Markdown report
+  // Build Claude-friendly Markdown report (NO auto-download — saved to history)
   var reportMD = buildReportMarkdown(ctx);
   var filename = 'feedback-' + dateStr + '.md';
-  downloadFile(filename, reportMD, 'text/markdown');
 
   // Save to history
   var consoleErrorCount = 0;
@@ -925,6 +924,7 @@ async function buildAndDownloadReport() {
     priority: priority,
     description: description.substring(0, 100),
     filename: filename,
+    reportContent: reportMD,
     hasScreenshot: totalScreenshots > 0,
     consoleErrorCount: consoleErrorCount,
     networkFailCount: networkFailCount,
@@ -1112,11 +1112,8 @@ function buildReportMarkdown(ctx) {
       if (step.screenshots.length > 0) {
         for (var ssi = 0; ssi < step.screenshots.length; ssi++) {
           var ss = step.screenshots[ssi];
-          var imgExt = ss.indexOf('data:image/jpeg') === 0 ? 'jpg' : 'png';
-          var imgMime = ss.indexOf('data:image/jpeg') === 0 ? 'image/jpeg' : 'image/png';
-          var imgFilename = 'feedback-step' + stepNum + '-' + (ssi + 1) + '.' + imgExt;
-          downloadFile(imgFilename, dataUrlToBlob(ss), imgMime);
-          lines.push('![Step ' + stepNum + ' - Screenshot ' + (ssi + 1) + '](' + imgFilename + ')');
+          // Embed screenshot inline as data URL (no separate file download)
+          lines.push('![Step ' + stepNum + ' - Screenshot ' + (ssi + 1) + '](' + ss + ')');
         }
         lines.push('');
       }
@@ -1615,6 +1612,16 @@ function renderHistory(history) {
       }));
     }
     header.appendChild(badges);
+
+    // Download button (if report content available)
+    if (item.reportContent) {
+      var dlBtn = createElement('button', { className: 'history-download', title: 'Download .md' });
+      dlBtn.textContent = '\u2B07';
+      (function (fname, content) {
+        dlBtn.addEventListener('click', function () { downloadFile(fname, content, 'text/markdown'); });
+      })(item.filename || 'feedback.md', item.reportContent);
+      header.appendChild(dlBtn);
+    }
 
     var deleteBtn = createElement('button', { className: 'history-delete', title: 'Delete', textContent: '\u00d7' });
     (function (itemId) {

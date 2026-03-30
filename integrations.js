@@ -170,7 +170,11 @@ var CATEGORY_MAP = {
 };
 
 function getAzureDevOpsType(category, configDefault) {
-  return CATEGORY_MAP.azureDevOps[category] || configDefault || 'Bug';
+  // "Auto" or empty = use category mapping; otherwise use the fixed type from settings
+  if (!configDefault || configDefault === 'Auto') {
+    return CATEGORY_MAP.azureDevOps[category] || 'Bug';
+  }
+  return configDefault;
 }
 
 function getGitHubLabels(category, priority) {

@@ -242,6 +242,12 @@ body {
 .badge-priority.low { background: #27ae60; color: #fff; }
 .badge-category { background: var(--border); color: var(--text); }
 
+.history-download {
+  background: none; border: none; color: var(--accent, #e94560);
+  cursor: pointer; font-size: 14px; padding: 0 4px; line-height: 1;
+}
+.history-download:hover { color: #27ae60; }
+
 .history-delete {
   background: none;
   border: none;
