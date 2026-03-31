@@ -690,6 +690,11 @@ select:focus {
 .integration-help ol { margin: 4px 0 0; padding-left: 18px; line-height: 1.6; }
 .integration-help li { color: var(--text); }
 
+.profile-naming-table { width: 100%; border-collapse: collapse; margin: 6px 0 8px; font-size: 11px; }
+.profile-naming-table th, .profile-naming-table td { padding: 3px 6px; border: 1px solid var(--border, #333); text-align: left; }
+.profile-naming-table th { background: var(--bg-secondary, #1e1e2e); font-weight: 600; }
+.profile-naming-table code { color: var(--accent, #e94560); font-size: 10px; }
+
 /* -- Import / Export config buttons ---------------------------------------- */
 .settings-import-export {
   display: flex; gap: 6px; margin-top: 12px; margin-bottom: 8px;

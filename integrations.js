@@ -292,6 +292,7 @@ async function sendToSlack(config, reportMD, metadata) {
 
 // Slack Web API with threading: parent message + detailed replies
 async function sendToSlackWithThread(config, reportMD, metadata, summary) {
+  var catLabel = getSlackCategoryLabel(metadata.category);
   var headers = {
     'Content-Type': 'application/json',
     'Authorization': 'Bearer ' + config.botToken

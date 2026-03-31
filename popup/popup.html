@@ -105,6 +105,29 @@
       <small class="profile-url-hint" data-i18n="intUrlHint">Use * as wildcard. This profile's integrations will only activate for matching URLs.</small>
     </div>
 
+    <div class="integration-help profile-help">
+      <details>
+        <summary data-i18n="profileHowTo">How profiles work</summary>
+        <p data-i18n="profileDesc">Profiles let you route bug reports to different channels per client/project.</p>
+        <ol>
+          <li data-i18n="profileStep1"><strong>Default</strong> profile catches all URLs. Keep it as a fallback.</li>
+          <li data-i18n="profileStep2">Click <strong>+</strong> to add a profile (e.g. "Client A").</li>
+          <li data-i18n="profileStep3">Set a <strong>URL Pattern</strong> (e.g. <code>*client-a*</code>) — BugJar auto-selects this profile when the page URL matches.</li>
+          <li data-i18n="profileStep4">Configure each profile's integrations independently (different Slack channel, Azure DevOps project, etc.).</li>
+          <li data-i18n="profileStep5">The <strong>Bot Token</strong> is the same across profiles — only the <strong>Channel ID</strong> changes per Slack channel.</li>
+        </ol>
+        <p data-i18n="profileMultiClient"><strong>Multi-client setup:</strong> Create one Slack channel per client (e.g. #bugjar-clientA, #bugjar-clientB), invite the bot to each, then create a BugJar profile per client with the matching Channel ID.</p>
+        <p data-i18n="profileNaming"><strong>Naming convention:</strong></p>
+        <table class="profile-naming-table">
+          <tr><th data-i18n="profileNamingElement">Element</th><th data-i18n="profileNamingFormat">Format</th><th data-i18n="profileNamingExample">Example</th></tr>
+          <tr><td>Slack channel</td><td><code>#bugjar-{client}</code></td><td><code>#bugjar-eyotic-demo</code></td></tr>
+          <tr><td>BugJar profile</td><td><code>{Client}</code></td><td><code>Eyotic Demo</code></td></tr>
+          <tr><td>URL pattern</td><td><code>*{domain}*</code></td><td><code>*eyotic-demo*</code></td></tr>
+        </table>
+        <p data-i18n="profileTeamSetup"><strong>Team deployment:</strong> Configure all profiles once, click <em>Export Config</em> (secrets are stripped), share the JSON file with your team. Each colleague imports it and only needs to fill in the <strong>Bot Token</strong> once.</p>
+      </details>
+    </div>
+
     <div class="integration-group">
       <label class="integration-toggle">
         <input type="checkbox" id="int-slack-enabled"> Slack
