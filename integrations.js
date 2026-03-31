@@ -1,12 +1,12 @@
 /**
  * BugJar — Integrations module
- * Sends reports to configured destinations (Slack, Azure DevOps, Email, Webhook, GitHub)
+ * Sends reports to configured destinations (Slack, Azure DevOps, Email, GitHub)
  * All credentials are stored per-user in chrome.storage.local — nothing hardcoded.
  *
  * Storage format (profile-based):
  *   bugjarIntegrations: {
  *     activeProfile: 'default',
- *     profiles: [ { id, name, urlPattern, integrations: { slack, azureDevOps, email, webhook, github } }, ... ]
+ *     profiles: [ { id, name, urlPattern, integrations: { slack, azureDevOps, email, github } }, ... ]
  *   }
  */
 
@@ -14,10 +14,9 @@ var INTEGRATIONS_STORAGE_KEY = 'bugjarIntegrations';
 
 // Default settings (all disabled)
 var DEFAULT_INTEGRATIONS = {
-  slack: { enabled: false, webhookUrl: '', botToken: '', channelId: '' },
+  slack: { enabled: false, botToken: '', channelId: '' },
   azureDevOps: { enabled: false, organization: '', project: '', pat: '', workItemType: 'Bug' },
   email: { enabled: false, to: '', subject: 'Bug Report — BugJar' },
-  webhook: { enabled: false, url: '', method: 'POST', headers: '' },
   github: { enabled: false, owner: '', repo: '', token: '' }
 };
 
@@ -209,8 +208,7 @@ var PLATFORM_ICONS = {
   'Slack': '\uD83D\uDCAC',
   'Azure DevOps': '\uD83D\uDD37',
   'Email': '\u2709\uFE0F',
-  'GitHub': '\uD83D\uDC19',
-  'Webhook': '\uD83D\uDD17'
+  'GitHub': '\uD83D\uDC19'
 };
 
 function getPlatformIcon(name) {
@@ -233,7 +231,7 @@ async function sendToIntegrations(reportMarkdown, metadata) {
   var config = profile.integrations;
   var promises = [];
 
-  if (config.slack.enabled && (config.slack.webhookUrl || config.slack.botToken)) {
+  if (config.slack.enabled && config.slack.botToken && config.slack.channelId) {
     promises.push(sendToSlack(config.slack, reportMarkdown, metadata));
   }
   if (config.azureDevOps.enabled && config.azureDevOps.pat) {
@@ -241,9 +239,6 @@ async function sendToIntegrations(reportMarkdown, metadata) {
   }
   if (config.email.enabled && config.email.to) {
     promises.push(Promise.resolve(sendToEmail(config.email, reportMarkdown, metadata)));
-  }
-  if (config.webhook.enabled && config.webhook.url) {
-    promises.push(sendToWebhook(config.webhook, reportMarkdown, metadata));
   }
   if (config.github.enabled && config.github.token) {
     promises.push(sendToGitHub(config.github, reportMarkdown, metadata));
@@ -267,24 +262,7 @@ async function sendToSlack(config, reportMD, metadata) {
     summary += ':link: ' + (metadata.url || 'Unknown') + '\n';
     summary += (metadata.description || '').substring(0, 300);
 
-    // If Bot Token + Channel ID available → use Slack Web API with threading
-    if (config.botToken && config.channelId) {
-      return await sendToSlackWithThread(config, reportMD, metadata, summary);
-    }
-
-    // Fallback: simple webhook (no threading)
-    if (!config.webhookUrl) {
-      return { integration: 'Slack', success: false, error: 'No webhook URL or bot token configured' };
-    }
-
-    var response = await bgFetch(
-      config.webhookUrl,
-      'POST',
-      { 'Content-Type': 'application/json' },
-      JSON.stringify({ text: summary })
-    );
-
-    return { integration: 'Slack', success: response && response.success, error: (response && response.success) ? undefined : 'HTTP ' + ((response && response.status) || '?') };
+    return await sendToSlackWithThread(config, reportMD, metadata, summary);
   } catch (e) {
     return { integration: 'Slack', success: false, error: e.message };
   }
@@ -573,44 +551,6 @@ function sendToEmail(config, reportMD, metadata) {
     return { integration: 'Email', success: true };
   } catch (e) {
     return { integration: 'Email', success: false, error: e.message };
-  }
-}
-
-// -- CUSTOM WEBHOOK --
-async function sendToWebhook(config, reportMD, metadata) {
-  try {
-    var headers = { 'Content-Type': 'application/json' };
-    // Parse custom headers if provided
-    if (config.headers) {
-      try {
-        var customHeaders = JSON.parse(config.headers);
-        Object.assign(headers, customHeaders);
-      } catch (e) { /* ignore invalid JSON */ }
-    }
-
-    var payload = {
-      source: 'BugJar',
-      timestamp: new Date().toISOString(),
-      url: metadata.url,
-      title: metadata.title,
-      category: metadata.category,
-      priority: metadata.priority,
-      description: metadata.description,
-      consoleErrors: metadata.consoleErrorCount,
-      networkFailures: metadata.networkFailCount,
-      report: reportMD
-    };
-
-    var response = await bgFetch(
-      config.url,
-      config.method || 'POST',
-      headers,
-      JSON.stringify(payload)
-    );
-
-    return { integration: 'Webhook', success: response && response.success, error: (response && response.success) ? undefined : 'HTTP ' + ((response && response.status) || '?') };
-  } catch (e) {
-    return { integration: 'Webhook', success: false, error: e.message };
   }
 }
 

@@ -1351,8 +1351,7 @@ var settingsCheckboxes = [
   { id: 'int-slack-enabled', fieldsId: 'int-slack-fields' },
   { id: 'int-azdo-enabled', fieldsId: 'int-azdo-fields' },
   { id: 'int-email-enabled', fieldsId: 'int-email-fields' },
-  { id: 'int-github-enabled', fieldsId: 'int-github-fields' },
-  { id: 'int-webhook-enabled', fieldsId: 'int-webhook-fields' }
+  { id: 'int-github-enabled', fieldsId: 'int-github-fields' }
 ];
 
 // Toggle field visibility when checkbox changes
@@ -1374,7 +1373,6 @@ function readIntegrationsFromForm() {
   return {
     slack: {
       enabled: document.getElementById('int-slack-enabled').checked,
-      webhookUrl: document.getElementById('int-slack-webhook').value.trim(),
       botToken: document.getElementById('int-slack-bot-token').value.trim(),
       channelId: document.getElementById('int-slack-channel-id').value.trim()
     },
@@ -1395,12 +1393,6 @@ function readIntegrationsFromForm() {
       owner: document.getElementById('int-github-owner').value.trim(),
       repo: document.getElementById('int-github-repo').value.trim(),
       token: document.getElementById('int-github-token').value.trim()
-    },
-    webhook: {
-      enabled: document.getElementById('int-webhook-enabled').checked,
-      url: document.getElementById('int-webhook-url').value.trim(),
-      method: document.getElementById('int-webhook-method').value,
-      headers: document.getElementById('int-webhook-headers').value.trim()
     }
   };
 }
@@ -1411,7 +1403,6 @@ function readIntegrationsFromForm() {
 function populateIntegrationFields(config) {
   // Slack
   document.getElementById('int-slack-enabled').checked = config.slack.enabled;
-  document.getElementById('int-slack-webhook').value = config.slack.webhookUrl || '';
   document.getElementById('int-slack-bot-token').value = config.slack.botToken || '';
   document.getElementById('int-slack-channel-id').value = config.slack.channelId || '';
   document.getElementById('int-slack-fields').style.display = config.slack.enabled ? 'flex' : 'none';
@@ -1438,11 +1429,6 @@ function populateIntegrationFields(config) {
   document.getElementById('int-github-fields').style.display = config.github.enabled ? 'flex' : 'none';
 
   // Webhook
-  document.getElementById('int-webhook-enabled').checked = config.webhook.enabled;
-  document.getElementById('int-webhook-url').value = config.webhook.url || '';
-  document.getElementById('int-webhook-method').value = config.webhook.method || 'POST';
-  document.getElementById('int-webhook-headers').value = config.webhook.headers || '';
-  document.getElementById('int-webhook-fields').style.display = config.webhook.enabled ? 'flex' : 'none';
 }
 
 /**
@@ -1563,7 +1549,7 @@ document.getElementById('btn-save-settings').addEventListener('click', async fun
 // ============================================================================
 
 /** Secret field names that must be stripped on export. */
-var SECRET_KEYS = ['botToken', 'pat', 'token', 'password', 'webhookUrl'];
+var SECRET_KEYS = ['botToken', 'pat', 'token', 'password'];
 
 /**
  * Deep-clone a profiles array, replacing every secret value with ''.

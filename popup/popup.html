@@ -133,22 +133,11 @@
         <input type="checkbox" id="int-slack-enabled"> Slack
       </label>
       <div class="integration-fields" id="int-slack-fields" style="display:none;">
-        <label class="settings-sublabel">Simple mode (webhook only, no threads)</label>
-        <input type="text" id="int-slack-webhook" placeholder="Webhook URL (https://hooks.slack.com/...)" class="settings-input">
-        <label class="settings-sublabel">Advanced mode (threads + file uploads)</label>
         <input type="password" id="int-slack-bot-token" placeholder="Bot Token (xoxb-...)" class="settings-input">
         <input type="text" id="int-slack-channel-id" placeholder="Channel ID (C0123456789)" class="settings-input">
         <div class="integration-help">
           <details>
             <summary data-i18n="intHowTo">How to configure</summary>
-            <p><strong>Simple (webhook):</strong></p>
-            <ol>
-              <li data-i18n="intSlackStep1">Go to your Slack workspace settings</li>
-              <li data-i18n="intSlackStep2">Apps &gt; Manage &gt; Incoming Webhooks (or search "Incoming Webhooks")</li>
-              <li data-i18n="intSlackStep3">Click "Add to Slack", choose the channel to receive bug reports</li>
-              <li data-i18n="intSlackStep4">Copy the Webhook URL and paste it above</li>
-            </ol>
-            <p><strong>Advanced (threads + screenshots):</strong></p>
             <ol>
               <li data-i18n="intSlackStep5">Go to api.slack.com/apps and create a new app</li>
               <li data-i18n="intSlackStep6">OAuth &amp; Permissions: add scopes chat:write + files:write</li>
@@ -230,30 +219,6 @@
               <li data-i18n="intGithubStep2">Click "Generate new token", select the repository</li>
               <li data-i18n="intGithubStep3">Permissions: Issues &gt; Read and Write</li>
               <li data-i18n="intGithubStep4">Copy the token (ghp_...) and paste it above</li>
-            </ol>
-          </details>
-        </div>
-      </div>
-    </div>
-
-    <div class="integration-group">
-      <label class="integration-toggle">
-        <input type="checkbox" id="int-webhook-enabled"> Custom Webhook
-      </label>
-      <div class="integration-fields" id="int-webhook-fields" style="display:none;">
-        <input type="text" id="int-webhook-url" placeholder="https://your-endpoint.com/api/bugs" class="settings-input">
-        <select id="int-webhook-method" class="settings-input">
-          <option value="POST">POST</option>
-          <option value="PUT">PUT</option>
-        </select>
-        <input type="text" id="int-webhook-headers" placeholder='Custom headers (JSON): {"X-Api-Key": "..."}' class="settings-input">
-        <div class="integration-help">
-          <details>
-            <summary data-i18n="intHowTo">How to configure</summary>
-            <ol>
-              <li data-i18n="intWebhookStep1">Enter any HTTPS URL that accepts JSON payloads</li>
-              <li data-i18n="intWebhookStep2">Works with: Jira, n8n, Zapier, Make, Teams, or any custom API</li>
-              <li data-i18n="intWebhookStep3">Add custom headers if your endpoint requires authentication (JSON format)</li>
             </ol>
           </details>
         </div>
