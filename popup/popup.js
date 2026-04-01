@@ -361,7 +361,7 @@ function renderSteps() {
         if (step.consoleLogs[cl].level === 'error') errCount++;
       }
       var conSpan = document.createElement('span');
-      conSpan.textContent = '\uD83D\uDCCB ' + errCount + ' error' + (errCount !== 1 ? 's' : '');
+      conSpan.textContent = '\uD83D\uDCCB ' + step.consoleLogs.length + ' log' + (step.consoleLogs.length !== 1 ? 's' : '') + (errCount > 0 ? ' (' + errCount + ' err)' : '');
       badgeLine.appendChild(conSpan);
       hasBadge = true;
     }
@@ -371,7 +371,7 @@ function renderSteps() {
         if (step.networkLogs[nl].status >= 400 || step.networkLogs[nl].status === 0) failCount++;
       }
       var netSpan = document.createElement('span');
-      netSpan.textContent = '  \uD83C\uDF10 ' + failCount + ' failed';
+      netSpan.textContent = '  \uD83C\uDF10 ' + step.networkLogs.length + ' req' + (step.networkLogs.length !== 1 ? 's' : '') + (failCount > 0 ? ' (' + failCount + ' fail)' : '');
       badgeLine.appendChild(netSpan);
       hasBadge = true;
     }
@@ -489,10 +489,23 @@ async function captureConsoleForStep(step) {
   });
 
   if (response && response.success) {
-    step.consoleLogs = response.logs;
+    // Append new logs (avoid duplicates by timestamp)
+    if (!step.consoleLogs) step.consoleLogs = [];
+    var existingTs = {};
+    for (var eci = 0; eci < step.consoleLogs.length; eci++) {
+      existingTs[step.consoleLogs[eci].timestamp + step.consoleLogs[eci].message] = true;
+    }
+    var added = 0;
+    for (var nci = 0; nci < response.logs.length; nci++) {
+      var key = response.logs[nci].timestamp + response.logs[nci].message;
+      if (!existingTs[key]) {
+        step.consoleLogs.push(response.logs[nci]);
+        added++;
+      }
+    }
     persistState();
     renderSteps();
-    setStatus('Captured ' + response.logs.length + ' console messages', 'success');
+    setStatus('Console: +' + added + ' new (' + step.consoleLogs.length + ' total)', 'success');
   } else {
     setStatus('No console data available', 'error');
   }
@@ -512,10 +525,23 @@ async function captureNetworkForStep(step) {
   });
 
   if (response && response.success) {
-    step.networkLogs = response.logs;
+    // Append new logs (avoid duplicates by URL+timestamp)
+    if (!step.networkLogs) step.networkLogs = [];
+    var existingNet = {};
+    for (var eni = 0; eni < step.networkLogs.length; eni++) {
+      existingNet[step.networkLogs[eni].url + step.networkLogs[eni].timestamp] = true;
+    }
+    var addedNet = 0;
+    for (var nni = 0; nni < response.logs.length; nni++) {
+      var nkey = response.logs[nni].url + response.logs[nni].timestamp;
+      if (!existingNet[nkey]) {
+        step.networkLogs.push(response.logs[nni]);
+        addedNet++;
+      }
+    }
     persistState();
     renderSteps();
-    setStatus('Captured ' + response.logs.length + ' network requests', 'success');
+    setStatus('Network: +' + addedNet + ' new (' + step.networkLogs.length + ' total)', 'success');
   } else {
     setStatus('No network data available', 'error');
   }
@@ -545,7 +571,12 @@ async function captureAllForStep(step) {
     await new Promise(function (resolve) {
       chrome.tabs.sendMessage(tabId, { action: 'getConsoleLogs' }, function (response) {
         if (response && response.success) {
-          step.consoleLogs = response.logs;
+          if (!step.consoleLogs) step.consoleLogs = [];
+          var existTs = {};
+          for (var ei = 0; ei < step.consoleLogs.length; ei++) existTs[step.consoleLogs[ei].timestamp + step.consoleLogs[ei].message] = true;
+          for (var ni = 0; ni < response.logs.length; ni++) {
+            if (!existTs[response.logs[ni].timestamp + response.logs[ni].message]) step.consoleLogs.push(response.logs[ni]);
+          }
           persistState();
           renderSteps();
         }
@@ -558,7 +589,12 @@ async function captureAllForStep(step) {
     await new Promise(function (resolve) {
       chrome.tabs.sendMessage(tabId, { action: 'getNetworkLogs' }, function (response) {
         if (response && response.success) {
-          step.networkLogs = response.logs;
+          if (!step.networkLogs) step.networkLogs = [];
+          var existNet = {};
+          for (var ei2 = 0; ei2 < step.networkLogs.length; ei2++) existNet[step.networkLogs[ei2].url + step.networkLogs[ei2].timestamp] = true;
+          for (var ni2 = 0; ni2 < response.logs.length; ni2++) {
+            if (!existNet[response.logs[ni2].url + response.logs[ni2].timestamp]) step.networkLogs.push(response.logs[ni2]);
+          }
           persistState();
           renderSteps();
         }
@@ -1068,7 +1104,7 @@ function buildReportMarkdown(ctx) {
           if (step.consoleLogs[cl].level === 'error') errors.push(step.consoleLogs[cl]);
           if (step.consoleLogs[cl].level === 'warn') warnings.push(step.consoleLogs[cl]);
         }
-        lines.push('**Console (' + errors.length + ' error' + (errors.length !== 1 ? 's' : '') + '):**');
+        lines.push('**Console (' + step.consoleLogs.length + ' log' + (step.consoleLogs.length !== 1 ? 's' : '') + ', ' + errors.length + ' error' + (errors.length !== 1 ? 's' : '') + '):**');
         lines.push('```');
         for (var cli = 0; cli < step.consoleLogs.length; cli++) {
           var log = step.consoleLogs[cli];
@@ -1087,7 +1123,7 @@ function buildReportMarkdown(ctx) {
         lines.push('');
       }
 
-      // Network - failed requests
+      // Network - all requests
       if (step.networkLogs && step.networkLogs.length > 0) {
         var failed = [];
         for (var nli = 0; nli < step.networkLogs.length; nli++) {
@@ -1095,19 +1131,18 @@ function buildReportMarkdown(ctx) {
             failed.push(step.networkLogs[nli]);
           }
         }
-        if (failed.length > 0) {
-          lines.push('**Failed requests:**');
-          lines.push('| Method | Status | URL | Duration |');
-          lines.push('|--------|--------|-----|----------|');
-          for (var fi = 0; fi < failed.length; fi++) {
-            var req = failed[fi];
-            lines.push('| ' + req.method + ' | ' + (req.status || 'ERR') + ' | ' + req.url + ' | ' + (req.duration || '?') + 'ms |');
-            if (req.responseBody) {
-              lines.push('> Response: ' + req.responseBody);
-            }
+        lines.push('**Network (' + step.networkLogs.length + ' request' + (step.networkLogs.length !== 1 ? 's' : '') + ', ' + failed.length + ' failed):**');
+        lines.push('| Method | Status | URL | Duration |');
+        lines.push('|--------|--------|-----|----------|');
+        for (var fi = 0; fi < step.networkLogs.length; fi++) {
+          var req = step.networkLogs[fi];
+          var statusMark = (req.status >= 400 || req.status === 0) ? '**' + (req.status || 'ERR') + '**' : String(req.status || '?');
+          lines.push('| ' + req.method + ' | ' + statusMark + ' | ' + req.url + ' | ' + (req.duration || '?') + 'ms |');
+          if (req.responseBody && (req.status >= 400 || req.status === 0)) {
+            lines.push('> Response: ' + req.responseBody);
           }
-          lines.push('');
         }
+        lines.push('');
       }
 
       // Screenshots
@@ -1381,7 +1416,10 @@ function readIntegrationsFromForm() {
       organization: document.getElementById('int-azdo-org').value.trim(),
       project: document.getElementById('int-azdo-project').value.trim(),
       pat: document.getElementById('int-azdo-pat').value.trim(),
-      workItemType: document.getElementById('int-azdo-type').value
+      workItemType: document.getElementById('int-azdo-type').value,
+      areaPath: document.getElementById('int-azdo-area').value.trim(),
+      iterationPath: document.getElementById('int-azdo-iteration').value.trim(),
+      assignedTo: document.getElementById('int-azdo-assigned').value.trim()
     },
     email: {
       enabled: document.getElementById('int-email-enabled').checked,
@@ -1413,6 +1451,9 @@ function populateIntegrationFields(config) {
   document.getElementById('int-azdo-project').value = config.azureDevOps.project || '';
   document.getElementById('int-azdo-pat').value = config.azureDevOps.pat || '';
   document.getElementById('int-azdo-type').value = config.azureDevOps.workItemType || 'Bug';
+  document.getElementById('int-azdo-area').value = config.azureDevOps.areaPath || '';
+  document.getElementById('int-azdo-iteration').value = config.azureDevOps.iterationPath || '';
+  document.getElementById('int-azdo-assigned').value = config.azureDevOps.assignedTo || '';
   document.getElementById('int-azdo-fields').style.display = config.azureDevOps.enabled ? 'flex' : 'none';
 
   // Email

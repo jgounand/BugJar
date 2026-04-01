@@ -331,7 +331,14 @@ function applyTranslations(lang) {
   document.querySelectorAll('[data-i18n]').forEach(el => {
     const key = el.getAttribute('data-i18n');
     const val = t(key);
-    if (val) el.textContent = val;
+    if (!val) return;
+    // Use innerHTML for translations containing safe formatting tags (strong, em, code only)
+    // These values come from our own hardcoded TRANSLATIONS object, not from user input
+    if (/<(strong|em|code|br)\b/i.test(val)) {
+      el.innerHTML = val;
+    } else {
+      el.textContent = val;
+    }
   });
 
   document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {

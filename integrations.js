@@ -15,7 +15,7 @@ var INTEGRATIONS_STORAGE_KEY = 'bugjarIntegrations';
 // Default settings (all disabled)
 var DEFAULT_INTEGRATIONS = {
   slack: { enabled: false, botToken: '', channelId: '' },
-  azureDevOps: { enabled: false, organization: '', project: '', pat: '', workItemType: 'Bug' },
+  azureDevOps: { enabled: false, organization: '', project: '', pat: '', workItemType: 'Bug', areaPath: '', iterationPath: '', assignedTo: '' },
   email: { enabled: false, to: '', subject: 'Bug Report — BugJar' },
   github: { enabled: false, owner: '', repo: '', token: '' }
 };
@@ -501,6 +501,44 @@ async function sendToAzureDevOps(config, reportMD, metadata) {
       { op: 'add', path: '/fields/Microsoft.VSTS.TCM.ReproSteps', value: htmlBody },
       { op: 'add', path: '/fields/Microsoft.VSTS.Common.Priority', value: metadata.priority === 'critical' ? 1 : metadata.priority === 'high' ? 2 : metadata.priority === 'medium' ? 3 : 4 }
     ];
+
+    // Severity (same mapping as Priority for Azure DevOps)
+    patchBody.push({ op: 'add', path: '/fields/Microsoft.VSTS.Common.Severity', value: metadata.priority === 'critical' ? '1 - Critical' : metadata.priority === 'high' ? '2 - High' : metadata.priority === 'medium' ? '3 - Medium' : '4 - Low' });
+
+    // System Info (browser, OS, resolution)
+    var sysInfo = metadata.userAgent || '';
+    if (metadata.environment) {
+      sysInfo = 'OS: ' + (metadata.environment.os || 'Unknown') + '<br>'
+        + 'Browser: ' + (metadata.environment.browser || 'Unknown') + '<br>'
+        + 'Resolution: ' + (metadata.environment.resolution || 'Unknown') + '<br>'
+        + 'DPR: ' + (metadata.environment.devicePixelRatio || '1');
+    }
+    patchBody.push({ op: 'add', path: '/fields/Microsoft.VSTS.TCM.SystemInfo', value: sysInfo });
+
+    // Tags
+    var tags = ['BugJar', metadata.category || 'bug', metadata.priority || 'medium'].join(';');
+    patchBody.push({ op: 'add', path: '/fields/System.Tags', value: tags });
+
+    // Description (short text)
+    if (metadata.description) {
+      patchBody.push({ op: 'add', path: '/fields/System.Description', value: metadata.description });
+    }
+
+    // Found In (URL)
+    if (metadata.url) {
+      patchBody.push({ op: 'add', path: '/fields/Microsoft.VSTS.Build.FoundIn', value: metadata.url });
+    }
+
+    // Configurable fields (only if set)
+    if (config.areaPath) {
+      patchBody.push({ op: 'add', path: '/fields/System.AreaPath', value: config.areaPath });
+    }
+    if (config.iterationPath) {
+      patchBody.push({ op: 'add', path: '/fields/System.IterationPath', value: config.iterationPath });
+    }
+    if (config.assignedTo) {
+      patchBody.push({ op: 'add', path: '/fields/System.AssignedTo', value: config.assignedTo });
+    }
 
     // 4. Add attachment relations
     for (var ri = 0; ri < attachmentUrls.length; ri++) {
