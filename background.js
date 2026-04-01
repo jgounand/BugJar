@@ -91,6 +91,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true; // async
   }
 
+  // Upload binary attachment to Azure DevOps
+  if (message.action === 'azdoUploadBinary') {
+    handleAzdoUploadBinary(message, sendResponse);
+    return true; // async
+  }
+
   switch (message.action) {
     case 'captureScreenshot':
       handleCaptureScreenshot(sendResponse);
@@ -310,6 +316,32 @@ async function handleFetchProxy(message, sendResponse) {
     var json = null;
     try { json = JSON.parse(text); } catch (e) { }
     sendResponse({ success: response.ok, status: response.status, body: text, json: json });
+  } catch (e) {
+    sendResponse({ success: false, error: e.message });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Azure DevOps binary attachment upload
+// ---------------------------------------------------------------------------
+async function handleAzdoUploadBinary(message, sendResponse) {
+  try {
+    var binary = atob(message.base64);
+    var array = new Uint8Array(binary.length);
+    for (var i = 0; i < binary.length; i++) array[i] = binary.charCodeAt(i);
+
+    var response = await fetch(message.url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/octet-stream',
+        'Authorization': message.authHeader
+      },
+      body: array.buffer
+    });
+    var text = await response.text();
+    var json = null;
+    try { json = JSON.parse(text); } catch (e) { }
+    sendResponse({ success: response.ok, status: response.status, json: json });
   } catch (e) {
     sendResponse({ success: false, error: e.message });
   }

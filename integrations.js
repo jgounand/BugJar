@@ -464,32 +464,66 @@ function markdownToHtml(md) {
 // -- AZURE DEVOPS --
 async function sendToAzureDevOps(config, reportMD, metadata) {
   try {
-    // Map BugJar category to Azure DevOps work item type
     var wiType = getAzureDevOpsType(metadata.category, config.workItemType);
+    var authHeader = 'Basic ' + btoa(':' + config.pat);
+    var baseUrl = 'https://dev.azure.com/' + encodeURIComponent(config.organization) + '/' +
+                  encodeURIComponent(config.project);
 
-    var url = 'https://dev.azure.com/' + encodeURIComponent(config.organization) + '/' +
-              encodeURIComponent(config.project) + '/_apis/wit/workitems/$' +
-              encodeURIComponent(wiType) + '?api-version=7.1';
+    // 1. Upload screenshots as attachments and collect URLs
+    var attachmentUrls = []; // { url, name }
+    if (metadata.steps) {
+      for (var si = 0; si < metadata.steps.length; si++) {
+        var step = metadata.steps[si];
+        if (!step.screenshots) continue;
+        for (var sci = 0; sci < step.screenshots.length; sci++) {
+          var dataUrl = step.screenshots[sci];
+          if (!dataUrl || !dataUrl.startsWith('data:')) continue;
+          var fileName = 'bugjar-step' + (si + 1) + '-screenshot' + (sci + 1) + '.png';
+          var uploaded = await azdoUploadAttachment(baseUrl, authHeader, dataUrl, fileName);
+          if (uploaded) attachmentUrls.push({ url: uploaded, name: fileName });
+        }
+      }
+    }
 
-    var title = wiType + ': ' + (metadata.description || 'Bug Report').substring(0, 100);
-
-    // Convert markdown to HTML for ReproSteps (includes screenshots as <img> with data URLs)
+    // 2. Convert markdown to HTML, replacing data URLs with attachment URLs
     var htmlBody = markdownToHtml(reportMD);
+    // Replace inline data:image URLs with uploaded attachment URLs
+    for (var ai = 0; ai < attachmentUrls.length; ai++) {
+      // Replace first remaining data URL occurrence with the attachment URL
+      htmlBody = htmlBody.replace(/src="data:image\/[^"]+"/,
+        'src="' + attachmentUrls[ai].url + '" alt="' + attachmentUrls[ai].name + '"');
+    }
 
-    var body = [
+    // 3. Create work item
+    var title = wiType + ': ' + (metadata.description || 'Bug Report').substring(0, 100);
+    var patchBody = [
       { op: 'add', path: '/fields/System.Title', value: title },
       { op: 'add', path: '/fields/Microsoft.VSTS.TCM.ReproSteps', value: htmlBody },
       { op: 'add', path: '/fields/Microsoft.VSTS.Common.Priority', value: metadata.priority === 'critical' ? 1 : metadata.priority === 'high' ? 2 : metadata.priority === 'medium' ? 3 : 4 }
     ];
 
+    // 4. Add attachment relations
+    for (var ri = 0; ri < attachmentUrls.length; ri++) {
+      patchBody.push({
+        op: 'add',
+        path: '/relations/-',
+        value: {
+          rel: 'AttachedFile',
+          url: attachmentUrls[ri].url,
+          attributes: { name: attachmentUrls[ri].name }
+        }
+      });
+    }
+
+    var wiUrl = baseUrl + '/_apis/wit/workitems/$' + encodeURIComponent(wiType) + '?api-version=7.1';
     var response = await bgFetch(
-      url,
+      wiUrl,
       'POST',
       {
         'Content-Type': 'application/json-patch+json',
-        'Authorization': 'Basic ' + btoa(':' + config.pat)
+        'Authorization': authHeader
       },
-      JSON.stringify(body)
+      JSON.stringify(patchBody)
     );
 
     var json = response && response.json ? response.json : null;
@@ -502,6 +536,35 @@ async function sendToAzureDevOps(config, reportMD, metadata) {
     };
   } catch (e) {
     return { integration: 'Azure DevOps', success: false, error: e.message };
+  }
+}
+
+/**
+ * Upload a base64 data URL as an attachment to Azure DevOps.
+ * Returns the attachment URL or null on failure.
+ */
+async function azdoUploadAttachment(baseUrl, authHeader, dataUrl, fileName) {
+  try {
+    var base64 = dataUrl.split(',')[1];
+    if (!base64) return null;
+
+    var uploadUrl = baseUrl + '/_apis/wit/attachments?fileName=' +
+                    encodeURIComponent(fileName) + '&api-version=7.1';
+
+    // Use dedicated binary upload handler in background.js
+    var response = await new Promise(function(resolve) {
+      chrome.runtime.sendMessage({
+        action: 'azdoUploadBinary',
+        url: uploadUrl,
+        authHeader: authHeader,
+        base64: base64
+      }, resolve);
+    });
+
+    return (response && response.success && response.json && response.json.url)
+      ? response.json.url : null;
+  } catch (e) {
+    return null;
   }
 }
 
