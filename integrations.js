@@ -352,36 +352,29 @@ async function sendToSlackWithThread(config, reportMD, metadata, summary) {
     text: metaBlock
   }));
 
-  // 2. Post console errors in thread (if any)
-  if (metadata.consoleErrorCount > 0) {
-    var consoleText = ':clipboard: *Console Logs (' + metadata.consoleErrorCount + ' errors)*\n';
-    // Extract console section from report markdown
-    var consoleMatch = reportMD.match(/\*\*Console[^*]*\*\*[^`]*```([^`]+)```/);
-    if (consoleMatch) {
-      consoleText += '```' + consoleMatch[1].substring(0, 2500) + '```';
-    }
-    await bgFetch(apiUrl, 'POST', headers, JSON.stringify({
-      channel: config.channelId,
-      thread_ts: threadTs,
-      text: consoleText
-    }));
+  // 2. Upload full report as .md file
+  var cleanReport = reportMD.replace(/!\[([^\]]*)\]\(data:image[^)]+\)/g, '![$1](see attached screenshots)');
+  await slackUploadTextFile(config, threadTs, cleanReport, 'report.md', ':page_facing_up: Full Report');
+
+  // 3. Build and upload console.md (if any console logs)
+  var consoleMd = buildConsoleMd(metadata);
+  if (consoleMd) {
+    await slackUploadTextFile(config, threadTs, consoleMd, 'console.md', ':clipboard: Console Logs');
   }
 
-  // 3. Post failed network requests in thread (if any)
-  if (metadata.networkFailCount > 0) {
-    var networkText = ':globe_with_meridians: *Network Failures (' + metadata.networkFailCount + ')*\n';
-    var networkMatch = reportMD.match(/\*\*Failed requests:\*\*\n([\s\S]*?)(?=\n\n|\n###|\n##|$)/);
-    if (networkMatch) {
-      networkText += networkMatch[1].substring(0, 2000);
-    }
-    await bgFetch(apiUrl, 'POST', headers, JSON.stringify({
-      channel: config.channelId,
-      thread_ts: threadTs,
-      text: networkText
-    }));
+  // 4. Build and upload network.md (if any network logs)
+  var networkMd = buildNetworkMd(metadata);
+  if (networkMd) {
+    await slackUploadTextFile(config, threadTs, networkMd, 'network.md', ':globe_with_meridians: Network Requests');
   }
 
-  // 4. Upload screenshots as files in the thread
+  // 5. Build and upload environment.md
+  var envMd = buildEnvironmentMd(metadata);
+  if (envMd) {
+    await slackUploadTextFile(config, threadTs, envMd, 'environment.md', ':computer: Environment');
+  }
+
+  // 6. Upload screenshots as image files in the thread
   if (metadata.steps) {
     for (var si = 0; si < metadata.steps.length; si++) {
       var step = metadata.steps[si];
@@ -396,7 +389,6 @@ async function sendToSlackWithThread(config, reportMD, metadata, summary) {
           var comment = ':camera: Step ' + (si + 1);
           if (step.description) comment += ' — ' + step.description.substring(0, 100);
 
-          // Upload via background.js slackUploadFile (FormData, binary)
           await new Promise(function (resolve) {
             chrome.runtime.sendMessage({
               action: 'slackUploadFile',
@@ -414,22 +406,132 @@ async function sendToSlackWithThread(config, reportMD, metadata, summary) {
     }
   }
 
-  // 5. Post clean report as text (strip base64 data URLs for readability)
-  var cleanReport = reportMD
-    .replace(/!\[([^\]]*)\]\(data:image[^)]+\)/g, ':frame_with_picture: _[$1 — see History for image]_')
-    .substring(0, 3500);
-
-  await bgFetch(apiUrl, 'POST', headers, JSON.stringify({
-    channel: config.channelId,
-    thread_ts: threadTs,
-    text: ':page_facing_up: *Full Report*\n' + cleanReport
-  }));
-
   return {
     integration: 'Slack',
     success: true,
     threadTs: threadTs
   };
+}
+
+// -- Slack: upload text as .md file in thread --
+async function slackUploadTextFile(config, threadTs, content, filename, comment) {
+  try {
+    // Convert text to base64
+    var base64 = btoa(unescape(encodeURIComponent(content)));
+    await new Promise(function (resolve) {
+      chrome.runtime.sendMessage({
+        action: 'slackUploadFile',
+        base64: base64,
+        mimeType: 'text/markdown',
+        filename: filename,
+        channelId: config.channelId,
+        threadTs: threadTs,
+        botToken: config.botToken,
+        comment: comment
+      }, function (r) { resolve(r); });
+    });
+  } catch (e) { /* non-critical */ }
+}
+
+// -- Build separate .md files for Slack thread --
+
+function buildConsoleMd(metadata) {
+  if (!metadata.steps) return null;
+  var lines = ['# Console Logs', ''];
+  var hasLogs = false;
+  for (var si = 0; si < metadata.steps.length; si++) {
+    var step = metadata.steps[si];
+    if (!step.consoleLogs || step.consoleLogs.length === 0) continue;
+    hasLogs = true;
+    lines.push('## Step ' + (si + 1) + ': ' + (step.description || '(no description)'));
+    lines.push('');
+    var errCount = 0;
+    for (var ci = 0; ci < step.consoleLogs.length; ci++) {
+      if (step.consoleLogs[ci].level === 'error') errCount++;
+    }
+    lines.push(step.consoleLogs.length + ' log(s), ' + errCount + ' error(s)');
+    lines.push('');
+    lines.push('```');
+    for (var cli = 0; cli < step.consoleLogs.length; cli++) {
+      var log = step.consoleLogs[cli];
+      var ts = log.timestamp ? new Date(log.timestamp).toISOString().slice(11, 23) : '';
+      var level = '[' + (log.level || 'log').toUpperCase() + ']';
+      var msg = log.message || '';
+      lines.push(ts + ' ' + level + ' ' + msg);
+      if (log.stack && log.level === 'error') {
+        var stackLines = log.stack.split('\n').slice(2, 6);
+        for (var sli = 0; sli < stackLines.length; sli++) {
+          lines.push('  ' + stackLines[sli].trim());
+        }
+      }
+    }
+    lines.push('```');
+    lines.push('');
+  }
+  return hasLogs ? lines.join('\n') : null;
+}
+
+function buildNetworkMd(metadata) {
+  if (!metadata.steps) return null;
+  var lines = ['# Network Requests', ''];
+  var hasLogs = false;
+  for (var si = 0; si < metadata.steps.length; si++) {
+    var step = metadata.steps[si];
+    if (!step.networkLogs || step.networkLogs.length === 0) continue;
+    hasLogs = true;
+    var failCount = 0;
+    for (var ni = 0; ni < step.networkLogs.length; ni++) {
+      if (step.networkLogs[ni].status >= 400 || step.networkLogs[ni].status === 0) failCount++;
+    }
+    lines.push('## Step ' + (si + 1) + ': ' + (step.description || '(no description)'));
+    lines.push('');
+    lines.push(step.networkLogs.length + ' request(s), ' + failCount + ' failed');
+    lines.push('');
+    lines.push('| Method | Status | URL | Duration |');
+    lines.push('|--------|--------|-----|----------|');
+    for (var nli = 0; nli < step.networkLogs.length; nli++) {
+      var req = step.networkLogs[nli];
+      var status = (req.status >= 400 || req.status === 0) ? '**' + (req.status || 'ERR') + '**' : String(req.status || '?');
+      lines.push('| ' + req.method + ' | ' + status + ' | ' + req.url + ' | ' + (req.duration || '?') + 'ms |');
+      if (req.responseBody && (req.status >= 400 || req.status === 0)) {
+        lines.push('> Response: ' + req.responseBody);
+      }
+    }
+    lines.push('');
+  }
+  return hasLogs ? lines.join('\n') : null;
+}
+
+function buildEnvironmentMd(metadata) {
+  if (!metadata.environment && !metadata.userAgent) return null;
+  var lines = ['# Environment', ''];
+  if (metadata.url) lines.push('- **URL:** ' + metadata.url);
+  if (metadata.title) lines.push('- **Page Title:** ' + metadata.title);
+  lines.push('- **Date:** ' + (metadata.date || new Date().toISOString()));
+  lines.push('');
+  if (metadata.environment) {
+    var env = metadata.environment;
+    lines.push('## System');
+    lines.push('');
+    lines.push('| Property | Value |');
+    lines.push('|----------|-------|');
+    if (env.os) lines.push('| OS | ' + env.os + ' |');
+    if (env.browser) lines.push('| Browser | ' + env.browser + ' |');
+    if (env.resolution) lines.push('| Resolution | ' + env.resolution + ' |');
+    if (env.devicePixelRatio) lines.push('| Device Pixel Ratio | ' + env.devicePixelRatio + ' |');
+    if (env.language) lines.push('| Language | ' + env.language + ' |');
+    if (env.timezone) lines.push('| Timezone | ' + env.timezone + ' |');
+    if (env.touch) lines.push('| Touch | ' + env.touch + ' |');
+    lines.push('');
+  }
+  if (metadata.userAgent) {
+    lines.push('## User Agent');
+    lines.push('');
+    lines.push('```');
+    lines.push(metadata.userAgent);
+    lines.push('```');
+  }
+  return lines.join('\n');
 }
 
 // -- Markdown → HTML converter (basic, for Azure DevOps ReproSteps) --
@@ -469,8 +571,29 @@ async function sendToAzureDevOps(config, reportMD, metadata) {
     var baseUrl = 'https://dev.azure.com/' + encodeURIComponent(config.organization) + '/' +
                   encodeURIComponent(config.project);
 
-    // 1. Upload screenshots as attachments and collect URLs
-    var attachmentUrls = []; // { url, name }
+    // 1. Upload all attachments (screenshots + .md files)
+    var attachmentUrls = []; // { url, name, type }
+
+    // 1a. Upload .md files
+    var consoleMd = buildConsoleMd(metadata);
+    var networkMd = buildNetworkMd(metadata);
+    var envMd = buildEnvironmentMd(metadata);
+    var cleanReportMd = reportMD.replace(/!\[([^\]]*)\]\(data:image[^)]+\)/g, '![$1](see attached screenshots)');
+
+    var mdFiles = [
+      { content: cleanReportMd, name: 'report.md' },
+      { content: consoleMd, name: 'console.md' },
+      { content: networkMd, name: 'network.md' },
+      { content: envMd, name: 'environment.md' }
+    ];
+    for (var mfi = 0; mfi < mdFiles.length; mfi++) {
+      if (!mdFiles[mfi].content) continue;
+      var mdBase64 = btoa(unescape(encodeURIComponent(mdFiles[mfi].content)));
+      var mdUploaded = await azdoUploadAttachment(baseUrl, authHeader, 'data:text/markdown;base64,' + mdBase64, mdFiles[mfi].name);
+      if (mdUploaded) attachmentUrls.push({ url: mdUploaded, name: mdFiles[mfi].name, type: 'md' });
+    }
+
+    // 1b. Upload screenshots
     if (metadata.steps) {
       for (var si = 0; si < metadata.steps.length; si++) {
         var step = metadata.steps[si];
@@ -480,7 +603,7 @@ async function sendToAzureDevOps(config, reportMD, metadata) {
           if (!dataUrl || !dataUrl.startsWith('data:')) continue;
           var fileName = 'bugjar-step' + (si + 1) + '-screenshot' + (sci + 1) + '.png';
           var uploaded = await azdoUploadAttachment(baseUrl, authHeader, dataUrl, fileName);
-          if (uploaded) attachmentUrls.push({ url: uploaded, name: fileName });
+          if (uploaded) attachmentUrls.push({ url: uploaded, name: fileName, type: 'image' });
         }
       }
     }
@@ -622,27 +745,42 @@ function sendToEmail(config, reportMD, metadata) {
       var mailto = 'mailto:' + encodeURIComponent(config.to) + '?subject=' + subject + '&body=' + body;
       chrome.tabs.create({ url: mailto, active: false });
     } else {
-      // Long report: download the .md file + open mailto with summary
-      var filename = 'bugjar-report-' + new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19) + '.md';
+      // Long report: download separate .md files + open mailto with summary
+      var dateSlug = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      var cleanReportEmail = reportMD.replace(/!\[([^\]]*)\]\(data:image[^)]+\)/g, '![$1](see screenshot files)');
 
-      // Download the file (this is the ONLY case where we auto-download)
-      var blob = new Blob([reportMD], { type: 'text/markdown' });
-      var downloadUrl = URL.createObjectURL(blob);
-      var a = document.createElement('a');
-      a.href = downloadUrl;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(downloadUrl);
+      var emailFiles = [
+        { content: cleanReportEmail, name: 'bugjar-report-' + dateSlug + '.md' },
+        { content: buildConsoleMd(metadata), name: 'bugjar-console-' + dateSlug + '.md' },
+        { content: buildNetworkMd(metadata), name: 'bugjar-network-' + dateSlug + '.md' },
+        { content: buildEnvironmentMd(metadata), name: 'bugjar-environment-' + dateSlug + '.md' }
+      ];
+
+      var downloadedFiles = [];
+      for (var efi = 0; efi < emailFiles.length; efi++) {
+        if (!emailFiles[efi].content) continue;
+        var blob = new Blob([emailFiles[efi].content], { type: 'text/markdown' });
+        var downloadUrl = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = emailFiles[efi].name;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(downloadUrl);
+        downloadedFiles.push(emailFiles[efi].name);
+      }
 
       // Open mailto with short summary + instruction
       var summary = 'URL: ' + (metadata.url || 'Unknown') + '\n\n';
       summary += 'Description: ' + (metadata.description || '').substring(0, 200) + '\n\n';
       if (metadata.consoleErrorCount > 0) summary += 'Console errors: ' + metadata.consoleErrorCount + '\n';
       if (metadata.networkFailCount > 0) summary += 'Network failures: ' + metadata.networkFailCount + '\n';
-      summary += '\n---\nFull report attached as: ' + filename + '\n';
-      summary += '(The file was downloaded to your Downloads folder)';
+      summary += '\n---\nFiles downloaded to your Downloads folder:\n';
+      for (var dfi = 0; dfi < downloadedFiles.length; dfi++) {
+        summary += '  - ' + downloadedFiles[dfi] + '\n';
+      }
+      summary += '\nPlease attach these files to this email.';
 
       var body = encodeURIComponent(summary);
       var mailto = 'mailto:' + encodeURIComponent(config.to) + '?subject=' + subject + '&body=' + body;
@@ -666,6 +804,25 @@ async function sendToGitHub(config, reportMD, metadata) {
     var title = (categoryLabel[metadata.category] || metadata.category) + ': ' + (metadata.description || 'Bug Report').substring(0, 100);
     var labels = getGitHubLabels(metadata.category, metadata.priority);
 
+    // Build structured body with collapsible sections
+    var cleanBody = reportMD.replace(/!\[([^\]]*)\]\(data:image[^)]+\)/g, '![$1](screenshot — see below)');
+    var githubBody = cleanBody;
+
+    // Add separate collapsible sections
+    var consoleMd = buildConsoleMd(metadata);
+    var networkMd = buildNetworkMd(metadata);
+    var envMd = buildEnvironmentMd(metadata);
+
+    if (consoleMd) {
+      githubBody += '\n\n<details>\n<summary>📋 Console Logs</summary>\n\n' + consoleMd + '\n</details>';
+    }
+    if (networkMd) {
+      githubBody += '\n\n<details>\n<summary>🌐 Network Requests</summary>\n\n' + networkMd + '\n</details>';
+    }
+    if (envMd) {
+      githubBody += '\n\n<details>\n<summary>💻 Environment</summary>\n\n' + envMd + '\n</details>';
+    }
+
     var response = await bgFetch(
       url,
       'POST',
@@ -676,7 +833,7 @@ async function sendToGitHub(config, reportMD, metadata) {
       },
       JSON.stringify({
         title: title,
-        body: reportMD,
+        body: githubBody,
         labels: labels
       })
     );
