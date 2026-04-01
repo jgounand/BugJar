@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "BugJar",
-  "version": "4.6.2",
+  "version": "4.6.3",
   "description": "Capture bugs in a jar — screenshot, console, network, annotations. Generates AI-ready reports.",
   "author": "Joris Gounand",
   "permissions": ["activeTab", "alarms", "scripting", "storage", "tabs"],
@@ -22,6 +22,11 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
+  "content_scripts": [{
+    "matches": ["https://*/*"],
+    "js": ["content.js"],
+    "run_at": "document_start"
+  }],
   "commands": {
     "_execute_action": {
       "suggested_key": { "default": "Ctrl+Shift+B", "mac": "Command+Shift+B" },
