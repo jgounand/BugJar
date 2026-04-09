@@ -1,15 +1,17 @@
 /**
  * Extracted pure functions from popup.js and background.js for testing.
- * These are exact copies of the source logic — not modified.
+ * KEEP IN SYNC with popup.js:parseUserAgent, popup.js:escapeHtml,
+ * background.js:isNewerVersion, popup.js:dataUrlToBlob
  */
 
 function parseUserAgent(ua) {
   let os = 'Unknown';
-  if (ua.includes('Mac OS X')) os = 'macOS';
+  // Check Android/iOS before their parent platforms (Linux/macOS) since their UA strings contain both
+  if (ua.includes('Android')) os = 'Android';
+  else if (ua.includes('iPhone') || ua.includes('iPad')) os = 'iOS';
+  else if (ua.includes('Mac OS X')) os = 'macOS';
   else if (ua.includes('Windows')) os = 'Windows';
   else if (ua.includes('Linux')) os = 'Linux';
-  else if (ua.includes('Android')) os = 'Android';
-  else if (ua.includes('iPhone') || ua.includes('iPad')) os = 'iOS';
 
   let browser = 'Unknown';
   const chromeMatch = ua.match(/Chrome\/([\d.]+)/);

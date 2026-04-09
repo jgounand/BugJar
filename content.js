@@ -603,11 +603,6 @@
         sendResponse({ success: true, history: navigationHistory.slice() });
         break;
 
-      case 'triggerCaptureAll':
-        showToast('Capture All triggered (open BugJar to see results)', 'success');
-        sendResponse({ success: true });
-        break;
-
       case 'ping':
         sendResponse({ success: true, injected: true });
         break;

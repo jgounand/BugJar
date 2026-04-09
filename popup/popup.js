@@ -450,6 +450,11 @@ async function captureScreenshotForStep(step) {
   renderSteps();
 
   if (annoRes && annoRes.success) {
+    // Store which step and screenshot index the annotation belongs to
+    chrome.storage.local.set({
+      pendingAnnotationStepId: step.id,
+      pendingAnnotationScreenshotIndex: step.screenshots.length - 1
+    });
     setStatus('Annotate the screenshot in the new tab', 'success');
   } else {
     setStatus('Screenshot captured', 'success');
@@ -564,48 +569,21 @@ async function captureAllForStep(step) {
     setStatus('Screenshot failed, continuing...', 'error');
   }
 
-  // 2/6 -- Console logs
+  // 2/6 -- Console logs (reuse dedicated function)
   setStatus('Capturing 2/6 -- Console...');
+  await captureConsoleForStep(step);
+
+  // 3/6 -- Network logs (reuse dedicated function)
+  setStatus('Capturing 3/6 -- Network...');
+  await captureNetworkForStep(step);
+
+  // 4/6 -- Framework info (global, not per-step)
+  setStatus('Capturing 4/6 -- Framework...');
   var tabId = await ensureContentScript();
   if (tabId) {
     await new Promise(function (resolve) {
-      chrome.tabs.sendMessage(tabId, { action: 'getConsoleLogs' }, function (response) {
-        if (response && response.success) {
-          if (!step.consoleLogs) step.consoleLogs = [];
-          var existTs = {};
-          for (var ei = 0; ei < step.consoleLogs.length; ei++) existTs[step.consoleLogs[ei].timestamp + step.consoleLogs[ei].message] = true;
-          for (var ni = 0; ni < response.logs.length; ni++) {
-            if (!existTs[response.logs[ni].timestamp + response.logs[ni].message]) step.consoleLogs.push(response.logs[ni]);
-          }
-          persistState();
-          renderSteps();
-        }
-        resolve();
-      });
-    });
-
-    // 3/6 -- Network logs
-    setStatus('Capturing 3/6 -- Network...');
-    await new Promise(function (resolve) {
-      chrome.tabs.sendMessage(tabId, { action: 'getNetworkLogs' }, function (response) {
-        if (response && response.success) {
-          if (!step.networkLogs) step.networkLogs = [];
-          var existNet = {};
-          for (var ei2 = 0; ei2 < step.networkLogs.length; ei2++) existNet[step.networkLogs[ei2].url + step.networkLogs[ei2].timestamp] = true;
-          for (var ni2 = 0; ni2 < response.logs.length; ni2++) {
-            if (!existNet[response.logs[ni2].url + response.logs[ni2].timestamp]) step.networkLogs.push(response.logs[ni2]);
-          }
-          persistState();
-          renderSteps();
-        }
-        resolve();
-      });
-    });
-
-    // 4/6 -- Framework info (global, not per-step)
-    setStatus('Capturing 4/6 -- Framework...');
-    await new Promise(function (resolve) {
       chrome.tabs.sendMessage(tabId, { action: 'getFrameworkInfo' }, function (response) {
+        if (chrome.runtime.lastError) { resolve(); return; }
         if (response && response.success) {
           state.frameworkInfo = response.framework;
           persistState();
@@ -618,6 +596,7 @@ async function captureAllForStep(step) {
     setStatus('Capturing 5/6 -- Storage...');
     await new Promise(function (resolve) {
       chrome.tabs.sendMessage(tabId, { action: 'getStorageInfo' }, function (response) {
+        if (chrome.runtime.lastError) { resolve(); return; }
         if (response && response.success) {
           state.storageInfo = response.storage;
           persistState();
@@ -630,6 +609,7 @@ async function captureAllForStep(step) {
     setStatus('Capturing 6/6 -- Navigation...');
     await new Promise(function (resolve) {
       chrome.tabs.sendMessage(tabId, { action: 'getNavigationHistory' }, function (response) {
+        if (chrome.runtime.lastError) { resolve(); return; }
         if (response && response.success) {
           state.navigationHistory = response.history;
           persistState();
@@ -847,11 +827,12 @@ function showIntegrationResults(results, profileName) {
 
 function parseUserAgent(ua) {
   var os = 'Unknown';
-  if (ua.indexOf('Mac OS X') !== -1) os = 'macOS';
+  // Check Android/iOS before their parent platforms (Linux/macOS) since their UA strings contain both
+  if (ua.indexOf('Android') !== -1) os = 'Android';
+  else if (ua.indexOf('iPhone') !== -1 || ua.indexOf('iPad') !== -1) os = 'iOS';
+  else if (ua.indexOf('Mac OS X') !== -1) os = 'macOS';
   else if (ua.indexOf('Windows') !== -1) os = 'Windows';
   else if (ua.indexOf('Linux') !== -1) os = 'Linux';
-  else if (ua.indexOf('Android') !== -1) os = 'Android';
-  else if (ua.indexOf('iPhone') !== -1 || ua.indexOf('iPad') !== -1) os = 'iOS';
 
   var browser = 'Unknown';
   var chromeMatch = ua.match(/Chrome\/([\d.]+)/);
@@ -971,9 +952,15 @@ async function buildAndDownloadReport() {
   // Pass steps with screenshots for platforms that can upload files (Slack)
   metadata.steps = state.steps;
   setStatus('Sending to integrations...', '');
-  var integrationOut = await sendToIntegrations(reportMD, metadata);
-  var integrationResults = integrationOut.results;
-  var matchedProfileName = integrationOut.profileName;
+  var integrationResults = [];
+  var matchedProfileName = 'Default';
+  try {
+    var integrationOut = await sendToIntegrations(reportMD, metadata);
+    integrationResults = integrationOut.results;
+    matchedProfileName = integrationOut.profileName;
+  } catch (e) {
+    setStatus('Integration error: ' + e.message, 'error');
+  }
 
   // Store integration results in history metadata (name, success, links)
   metadata.integrations = integrationResults.map(function (r) {
@@ -1096,53 +1083,35 @@ function buildReportMarkdown(ctx) {
         lines.push('');
       }
 
-      // Console logs
-      if (step.consoleLogs && step.consoleLogs.length > 0) {
-        var errors = [];
-        var warnings = [];
-        for (var cl = 0; cl < step.consoleLogs.length; cl++) {
-          if (step.consoleLogs[cl].level === 'error') errors.push(step.consoleLogs[cl]);
-          if (step.consoleLogs[cl].level === 'warn') warnings.push(step.consoleLogs[cl]);
+      // Console logs — delegate to shared buildConsoleMd from integrations.js
+      var stepConsoleMd = buildConsoleMd({ steps: [step] });
+      if (stepConsoleMd) {
+        // Strip the top-level heading and step heading (already in our own structure)
+        var consoleLines = stepConsoleMd.split('\n');
+        // Remove "# Console Logs", blank, "## Step 1: ...", blank, "N log(s)..." preamble
+        var consoleStart = 0;
+        for (var cli = 0; cli < consoleLines.length; cli++) {
+          if (consoleLines[cli].indexOf('```') === 0) { consoleStart = cli; break; }
         }
-        lines.push('**Console (' + step.consoleLogs.length + ' log' + (step.consoleLogs.length !== 1 ? 's' : '') + ', ' + errors.length + ' error' + (errors.length !== 1 ? 's' : '') + '):**');
-        lines.push('```');
-        for (var cli = 0; cli < step.consoleLogs.length; cli++) {
-          var log = step.consoleLogs[cli];
-          var ts = log.timestamp ? new Date(log.timestamp).toISOString().slice(11, 23) : '';
-          var level = '[' + (log.level || 'log').toUpperCase() + ']';
-          var msg = Array.isArray(log.args) ? log.args.join(' ') : (log.message || '');
-          lines.push(ts + ' ' + level + ' ' + msg);
-          if (log.stack && log.level === 'error') {
-            var stackLines = log.stack.split('\n').slice(2, 6);
-            for (var sli = 0; sli < stackLines.length; sli++) {
-              lines.push('  ' + stackLines[sli].trim());
-            }
-          }
+        lines.push('**Console:**');
+        for (var cli2 = consoleStart; cli2 < consoleLines.length; cli2++) {
+          lines.push(consoleLines[cli2]);
         }
-        lines.push('```');
-        lines.push('');
       }
 
-      // Network - all requests
-      if (step.networkLogs && step.networkLogs.length > 0) {
-        var failed = [];
-        for (var nli = 0; nli < step.networkLogs.length; nli++) {
-          if (step.networkLogs[nli].status >= 400 || step.networkLogs[nli].status === 0) {
-            failed.push(step.networkLogs[nli]);
-          }
+      // Network — delegate to shared buildNetworkMd from integrations.js
+      var stepNetworkMd = buildNetworkMd({ steps: [step] });
+      if (stepNetworkMd) {
+        var networkLines = stepNetworkMd.split('\n');
+        // Remove "# Network Requests", blank, "## Step 1: ...", blank, "N request(s)..." preamble
+        var netStart = 0;
+        for (var nli = 0; nli < networkLines.length; nli++) {
+          if (networkLines[nli].indexOf('| Method') === 0) { netStart = nli; break; }
         }
-        lines.push('**Network (' + step.networkLogs.length + ' request' + (step.networkLogs.length !== 1 ? 's' : '') + ', ' + failed.length + ' failed):**');
-        lines.push('| Method | Status | URL | Duration |');
-        lines.push('|--------|--------|-----|----------|');
-        for (var fi = 0; fi < step.networkLogs.length; fi++) {
-          var req = step.networkLogs[fi];
-          var statusMark = (req.status >= 400 || req.status === 0) ? '**' + (req.status || 'ERR') + '**' : String(req.status || '?');
-          lines.push('| ' + req.method + ' | ' + statusMark + ' | ' + req.url + ' | ' + (req.duration || '?') + 'ms |');
-          if (req.responseBody && (req.status >= 400 || req.status === 0)) {
-            lines.push('> Response: ' + req.responseBody);
-          }
+        lines.push('**Network:**');
+        for (var nli2 = netStart; nli2 < networkLines.length; nli2++) {
+          lines.push(networkLines[nli2]);
         }
-        lines.push('');
       }
 
       // Screenshots
@@ -1241,7 +1210,7 @@ els.priority.addEventListener('change', saveFormFields);
 // ============================================================================
 // Restore persisted data on popup open (CRIT-2 + update banner)
 // ============================================================================
-chrome.storage.local.get(['annotatedScreenshot', 'capturedElement', 'updateAvailable', 'bugjarLang', 'helpDismissed', 'bugjarForm', 'bugjarState'], function (stored) {
+chrome.storage.local.get(['annotatedScreenshot', 'capturedElement', 'updateAvailable', 'bugjarLang', 'helpDismissed', 'bugjarForm', 'bugjarState', 'pendingCaptureAll', 'pendingAnnotationStepId', 'pendingAnnotationScreenshotIndex'], function (stored) {
   // Restore form fields
   if (stored.bugjarForm) {
     if (stored.bugjarForm.description) els.description.value = stored.bugjarForm.description;
@@ -1262,22 +1231,36 @@ chrome.storage.local.get(['annotatedScreenshot', 'capturedElement', 'updateAvail
     if (s.navigationHistory) state.navigationHistory = s.navigationHistory;
   }
 
-  // Consume annotatedScreenshot: replace the last raw screenshot with the annotated version
+  // Consume annotatedScreenshot: replace the raw screenshot with the annotated version
   if (stored.annotatedScreenshot) {
-    var annStep = getCurrentStep();
+    // Use the saved step ID to target the correct step
+    var annStep = null;
+    var annIndex = -1;
+    if (stored.pendingAnnotationStepId) {
+      annStep = getStepById(stored.pendingAnnotationStepId);
+      annIndex = (typeof stored.pendingAnnotationScreenshotIndex === 'number')
+        ? stored.pendingAnnotationScreenshotIndex : -1;
+    }
+    // Fallback to current step if the saved step was deleted
+    if (!annStep) {
+      annStep = getCurrentStep();
+      annIndex = -1;
+    }
     if (!annStep) {
       annStep = createStep();
     }
     if (annStep) {
-      // Replace the last screenshot (raw fallback) with the annotated version
-      if (annStep.screenshots.length > 0) {
+      if (annIndex >= 0 && annIndex < annStep.screenshots.length) {
+        annStep.screenshots[annIndex] = stored.annotatedScreenshot;
+      } else if (annStep.screenshots.length > 0) {
         annStep.screenshots[annStep.screenshots.length - 1] = stored.annotatedScreenshot;
       } else {
         annStep.screenshots.push(stored.annotatedScreenshot);
       }
     }
-    chrome.storage.local.remove('annotatedScreenshot');
+    chrome.storage.local.remove(['annotatedScreenshot', 'pendingAnnotationStepId', 'pendingAnnotationScreenshotIndex']);
     persistState();
+    setStatus('Annotated screenshot saved', 'success');
   }
 
   // Backward compat: content.js writes capturedElement directly -- import into current step
@@ -1300,6 +1283,15 @@ chrome.storage.local.get(['annotatedScreenshot', 'capturedElement', 'updateAvail
 
   // Render steps after all state is restored
   renderSteps();
+
+  // Consume pendingCaptureAll flag from keyboard shortcut
+  if (stored.pendingCaptureAll) {
+    chrome.storage.local.remove('pendingCaptureAll');
+    var step = getCurrentStep() || createStep();
+    if (step) {
+      captureAllForStep(step);
+    }
+  }
 
   // Update banner + version check
   var currentVersion = chrome.runtime.getManifest().version;

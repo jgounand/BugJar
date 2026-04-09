@@ -49,13 +49,15 @@ function isNewerVersion(latest, current) {
 // ---------------------------------------------------------------------------
 // P3-23: Keyboard shortcut handler
 // ---------------------------------------------------------------------------
-chrome.commands.onCommand.addListener((command) => {
+chrome.commands.onCommand.addListener(async (command) => {
   if (command === 'capture-all') {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0]) {
-        chrome.tabs.sendMessage(tabs[0].id, { action: 'triggerCaptureAll' });
-      }
-    });
+    // Set a flag so the popup auto-triggers captureAll on open
+    await chrome.storage.local.set({ pendingCaptureAll: true });
+    try {
+      chrome.action.openPopup();
+    } catch (e) {
+      // Chrome < 99 or restricted context — user clicks icon manually
+    }
   }
 });
 
@@ -150,9 +152,10 @@ async function handleCaptureScreenshot(sendResponse) {
 // ---------------------------------------------------------------------------
 async function handleOpenAnnotationEditor(message, sendResponse) {
   try {
-    // Compress screenshot to JPEG if it exceeds 4MB to avoid storage quota issues
+    // Compress screenshot to JPEG if decoded size exceeds 3MB to avoid storage quota issues
+    // (base64 inflates by ~33%, so we compare string length against 3MB * 4/3 ≈ 4MB)
     let dataUrl = message.dataUrl;
-    if (dataUrl && dataUrl.length > 4 * 1024 * 1024) {
+    if (dataUrl && dataUrl.length > 3 * 1024 * 1024 * (4 / 3)) {
       dataUrl = await compressScreenshot(dataUrl, 0.85);
     }
 
@@ -245,17 +248,23 @@ async function handleGetActiveTabInfo(sendResponse) {
 }
 
 // ---------------------------------------------------------------------------
+// Shared helper: base64 string → Uint8Array
+// ---------------------------------------------------------------------------
+function base64ToUint8Array(b64) {
+  var binary = atob(b64);
+  var array = new Uint8Array(binary.length);
+  for (var i = 0; i < binary.length; i++) array[i] = binary.charCodeAt(i);
+  return array;
+}
+
+// ---------------------------------------------------------------------------
 // Fetch proxy — allows popup/integrations to call external APIs via the
 // background service worker (relaxed CORS, no extra host_permissions needed)
 // ---------------------------------------------------------------------------
 async function handleSlackFileUpload(message, sendResponse) {
   try {
     var authHeader = { 'Authorization': 'Bearer ' + message.botToken };
-
-    // Convert base64 to binary
-    var binary = atob(message.base64);
-    var array = new Uint8Array(binary.length);
-    for (var i = 0; i < binary.length; i++) array[i] = binary.charCodeAt(i);
+    var array = base64ToUint8Array(message.base64);
 
     // Step 1: Get upload URL from Slack
     var getUrlRes = await fetch('https://slack.com/api/files.getUploadURLExternal', {
@@ -326,9 +335,7 @@ async function handleFetchProxy(message, sendResponse) {
 // ---------------------------------------------------------------------------
 async function handleAzdoUploadBinary(message, sendResponse) {
   try {
-    var binary = atob(message.base64);
-    var array = new Uint8Array(binary.length);
-    for (var i = 0; i < binary.length; i++) array[i] = binary.charCodeAt(i);
+    var array = base64ToUint8Array(message.base64);
 
     var response = await fetch(message.url, {
       method: 'POST',

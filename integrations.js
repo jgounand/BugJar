@@ -120,7 +120,7 @@ async function saveIntegrations(config) {
 function matchUrlPattern(url, pattern) {
   if (!pattern) return false; // empty pattern = default only
   var regex = pattern
-    .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+    .replace(/[.+?^${}()|[\]\\*]/g, '\\$&')
     .replace(/\\\*/g, '.*');
   return new RegExp(regex, 'i').test(url);
 }
@@ -610,11 +610,11 @@ async function sendToAzureDevOps(config, reportMD, metadata) {
 
     // 2. Convert markdown to HTML, replacing data URLs with attachment URLs
     var htmlBody = markdownToHtml(reportMD);
-    // Replace inline data:image URLs with uploaded attachment URLs
-    for (var ai = 0; ai < attachmentUrls.length; ai++) {
-      // Replace first remaining data URL occurrence with the attachment URL
+    // Replace inline data:image URLs with uploaded image attachment URLs only
+    var imageAttachments = attachmentUrls.filter(function (a) { return a.type === 'image'; });
+    for (var ai = 0; ai < imageAttachments.length; ai++) {
       htmlBody = htmlBody.replace(/src="data:image\/[^"]+"/,
-        'src="' + attachmentUrls[ai].url + '" alt="' + attachmentUrls[ai].name + '"');
+        'src="' + imageAttachments[ai].url + '" alt="' + imageAttachments[ai].name + '"');
     }
 
     // 3. Create work item
