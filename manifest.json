@@ -5,7 +5,7 @@
   "description": "Capture bugs in a jar — screenshot, console, network, annotations. Generates AI-ready reports.",
   "author": "Joris Gounand",
   "permissions": ["activeTab", "alarms", "scripting", "storage", "tabs"],
-  "host_permissions": ["https://*/*"],
+  "optional_host_permissions": ["https://*/*"],
   "action": {
     "default_popup": "popup/popup.html",
     "default_icon": {

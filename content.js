@@ -88,7 +88,7 @@
     consoleLogs.push({
       level: 'error',
       timestamp: new Date().toISOString(),
-      message: `Unhandled Promise Rejection: ${event.reason}`
+      message: 'Unhandled Promise Rejection: ' + (event.reason instanceof Error ? event.reason.message : (() => { try { return JSON.stringify(event.reason); } catch { return String(event.reason); } })())
     });
     if (consoleLogs.length > MAX_CONSOLE_ENTRIES) consoleLogs.shift();
   });
@@ -150,11 +150,11 @@
         entry.timestamp = new Date().toISOString();
         networkLogs.push(entry);
         if (networkLogs.length > MAX_NETWORK_ENTRIES) networkLogs.shift();
-      });
+      }, { once: true });
 
       xhr.addEventListener('error', () => {
         entry.error = 'Network Error';
-      });
+      }, { once: true });
 
       return origSend(...args);
     };
@@ -530,16 +530,18 @@
 
   const originalPushState = history.pushState;
   history.pushState = function(...args) {
-    navigationHistory.push({ url: args[2] || location.href, timestamp: new Date().toISOString(), type: 'pushState' });
+    var result = originalPushState.apply(this, args);
+    navigationHistory.push({ url: location.href, timestamp: new Date().toISOString(), type: 'pushState' });
     if (navigationHistory.length > MAX_NAV_ENTRIES) navigationHistory.shift();
-    return originalPushState.apply(this, args);
+    return result;
   };
 
   const originalReplaceState = history.replaceState;
   history.replaceState = function(...args) {
-    navigationHistory.push({ url: args[2] || location.href, timestamp: new Date().toISOString(), type: 'replaceState' });
+    var result = originalReplaceState.apply(this, args);
+    navigationHistory.push({ url: location.href, timestamp: new Date().toISOString(), type: 'replaceState' });
     if (navigationHistory.length > MAX_NAV_ENTRIES) navigationHistory.shift();
-    return originalReplaceState.apply(this, args);
+    return result;
   };
 
   window.addEventListener('popstate', () => {

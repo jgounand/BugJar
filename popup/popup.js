@@ -1574,6 +1574,21 @@ document.getElementById('btn-delete-profile').addEventListener('click', function
 document.getElementById('btn-save-settings').addEventListener('click', async function () {
   saveCurrentProfileFromForm();
   await saveProfiles(_profileData);
+
+  // Request host permissions for enabled integrations upfront
+  var currentId = document.getElementById('profile-select').value;
+  var profile = getProfileById(_profileData.profiles, currentId);
+  if (profile) {
+    var origins = getRequiredOrigins(profile.integrations);
+    if (origins.length > 0) {
+      var granted = await requestHostPermissions(origins);
+      if (!granted) {
+        setStatus('Settings saved (host permissions denied — will ask again on report)', 'success');
+        return;
+      }
+    }
+  }
+
   setStatus('Settings saved', 'success');
 });
 

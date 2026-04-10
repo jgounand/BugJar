@@ -187,9 +187,60 @@ function getSlackCategoryLabel(category) {
   return CATEGORY_MAP.slack[category] || category;
 }
 
+// ============================================================================
+// Host permission helpers (optional_host_permissions)
+// ============================================================================
+
+/**
+ * Origins required by each integration for background fetch proxy.
+ */
+var INTEGRATION_ORIGINS = {
+  slack: ['https://slack.com/*'],
+  azureDevOps: ['https://dev.azure.com/*', 'https://*.visualstudio.com/*'],
+  github: ['https://api.github.com/*'],
+  email: [] // no fetch needed, uses mailto:
+};
+
+/**
+ * Collect all origins needed by enabled integrations in a profile.
+ */
+function getRequiredOrigins(config) {
+  var origins = [];
+  if (config.slack && config.slack.enabled) origins = origins.concat(INTEGRATION_ORIGINS.slack);
+  if (config.azureDevOps && config.azureDevOps.enabled) origins = origins.concat(INTEGRATION_ORIGINS.azureDevOps);
+  if (config.github && config.github.enabled) origins = origins.concat(INTEGRATION_ORIGINS.github);
+  return origins;
+}
+
+/**
+ * Request host permissions for the given origins.
+ * Must be called from a user gesture context (click handler).
+ * Returns true if granted, false otherwise.
+ */
+function requestHostPermissions(origins) {
+  if (!origins || origins.length === 0) return Promise.resolve(true);
+  return new Promise(function (resolve) {
+    chrome.permissions.request({ origins: origins }, function (granted) {
+      resolve(granted);
+    });
+  });
+}
+
+/**
+ * Check if host permissions are already granted for the given origins.
+ */
+function checkHostPermissions(origins) {
+  if (!origins || origins.length === 0) return Promise.resolve(true);
+  return new Promise(function (resolve) {
+    chrome.permissions.contains({ origins: origins }, function (has) {
+      resolve(has);
+    });
+  });
+}
+
 /**
  * Proxy fetch through the background service worker.
- * Background scripts have relaxed CORS in MV3 — no extra permissions needed.
+ * Requires host permissions for the target URL origin.
  */
 function bgFetch(url, method, headers, body) {
   return new Promise(function (resolve) {
@@ -229,6 +280,16 @@ async function sendToIntegrations(reportMarkdown, metadata) {
     profile = getProfileById(data.profiles, data.activeProfile) || data.profiles[0];
   }
   var config = profile.integrations;
+
+  // Request host permissions for enabled integrations (optional_host_permissions)
+  var origins = getRequiredOrigins(config);
+  if (origins.length > 0) {
+    var granted = await requestHostPermissions(origins);
+    if (!granted) {
+      return { results: [{ integration: 'Permissions', success: false, error: 'Host permissions denied by user' }], profileName: profile.name };
+    }
+  }
+
   var promises = [];
 
   if (config.slack.enabled && config.slack.botToken && config.slack.channelId) {
