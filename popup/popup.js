@@ -1422,7 +1422,8 @@ function readIntegrationsFromForm() {
       enabled: document.getElementById('int-github-enabled').checked,
       owner: document.getElementById('int-github-owner').value.trim(),
       repo: document.getElementById('int-github-repo').value.trim(),
-      token: document.getElementById('int-github-token').value.trim()
+      token: document.getElementById('int-github-token').value.trim(),
+      assignee: document.getElementById('int-github-assignee').value.trim()
     }
   };
 }
@@ -1459,6 +1460,7 @@ function populateIntegrationFields(config) {
   document.getElementById('int-github-owner').value = config.github.owner || '';
   document.getElementById('int-github-repo').value = config.github.repo || '';
   document.getElementById('int-github-token').value = config.github.token || '';
+  document.getElementById('int-github-assignee').value = config.github.assignee || '';
   document.getElementById('int-github-fields').style.display = config.github.enabled ? 'flex' : 'none';
 
   // Webhook

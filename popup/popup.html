@@ -214,13 +214,14 @@
         <input type="text" id="int-github-owner" placeholder="Owner (e.g. jgounand)" class="settings-input">
         <input type="text" id="int-github-repo" placeholder="Repository (e.g. BugJar)" class="settings-input">
         <input type="password" id="int-github-token" placeholder="GitHub Token (ghp_...)" class="settings-input">
+        <input type="text" id="int-github-assignee" placeholder="Assignee (GitHub username, optional)" class="settings-input">
         <div class="integration-help">
           <details>
             <summary data-i18n="intHowTo">How to configure</summary>
             <ol>
               <li data-i18n="intGithubStep1">Go to github.com &gt; Settings &gt; Developer settings &gt; Personal access tokens &gt; Fine-grained tokens</li>
               <li data-i18n="intGithubStep2">Click "Generate new token", select the repository</li>
-              <li data-i18n="intGithubStep3">Permissions: Issues &gt; Read and Write</li>
+              <li data-i18n="intGithubStep3">Permissions: Issues &gt; Read and Write + Contents &gt; Read and Write (for screenshot uploads)</li>
               <li data-i18n="intGithubStep4">Copy the token (ghp_...) and paste it above</li>
             </ol>
           </details>

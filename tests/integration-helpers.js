@@ -7,7 +7,7 @@ var DEFAULT_INTEGRATIONS = {
   slack: { enabled: false, botToken: '', channelId: '' },
   azureDevOps: { enabled: false, organization: '', project: '', pat: '', workItemType: 'Bug', areaPath: '', iterationPath: '', assignedTo: '' },
   email: { enabled: false, to: '', subject: 'Bug Report — BugJar' },
-  github: { enabled: false, owner: '', repo: '', token: '' }
+  github: { enabled: false, owner: '', repo: '', token: '', assignee: '' }
 };
 
 var CATEGORY_MAP = {

@@ -17,7 +17,7 @@ var DEFAULT_INTEGRATIONS = {
   slack: { enabled: false, botToken: '', channelId: '' },
   azureDevOps: { enabled: false, organization: '', project: '', pat: '', workItemType: 'Bug', areaPath: '', iterationPath: '', assignedTo: '' },
   email: { enabled: false, to: '', subject: 'Bug Report — BugJar' },
-  github: { enabled: false, owner: '', repo: '', token: '' }
+  github: { enabled: false, owner: '', repo: '', token: '', assignee: '' }
 };
 
 function createDefaultProfile() {
@@ -362,7 +362,13 @@ async function sendToSlackWithThread(config, reportMD, metadata, summary) {
         { type: 'mrkdwn', text: '*Priority:*\n' + pEmoji + ' ' + (metadata.priority || 'medium') },
         { type: 'mrkdwn', text: '*URL:*\n<' + (metadata.url || '#') + '>' },
         { type: 'mrkdwn', text: '*Status:*\n:new: New' }
-      ]
+      ],
+      accessory: metadata.url ? {
+        type: 'button',
+        text: { type: 'plain_text', text: 'Open Page' },
+        url: metadata.url,
+        action_id: 'bugjar_open_page'
+      } : undefined
     },
     {
       type: 'context',
@@ -857,54 +863,206 @@ function sendToEmail(config, reportMD, metadata) {
 // -- GITHUB ISSUES --
 async function sendToGitHub(config, reportMD, metadata) {
   try {
-    var url = 'https://api.github.com/repos/' + encodeURIComponent(config.owner) + '/' +
-              encodeURIComponent(config.repo) + '/issues';
+    var repoBase = 'https://api.github.com/repos/' + encodeURIComponent(config.owner) + '/' +
+                   encodeURIComponent(config.repo);
+    var ghHeaders = {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + config.token,
+      'Accept': 'application/vnd.github+json'
+    };
 
     // Map BugJar category + priority to GitHub labels
     var categoryLabel = { bug: 'Bug', feature: 'Feature Request', question: 'Question', other: 'Other' };
-    var title = (categoryLabel[metadata.category] || metadata.category) + ': ' + (metadata.description || 'Bug Report').substring(0, 100);
+    var catLabel = categoryLabel[metadata.category] || metadata.category;
+    var title = catLabel + ': ' + (metadata.description || 'Bug Report').substring(0, 100);
     var labels = getGitHubLabels(metadata.category, metadata.priority);
 
-    // Build structured body with collapsible sections
-    var cleanBody = reportMD.replace(/!\[([^\]]*)\]\(data:image[^)]+\)/g, '![$1](screenshot — see below)');
-    var githubBody = cleanBody;
+    // -- Build structured GitHub issue body using GFM features --
+    var body = [];
 
-    // Add separate collapsible sections
+    // Priority callout using GitHub alerts syntax
+    var alertType = metadata.priority === 'critical' ? 'CAUTION' : metadata.priority === 'high' ? 'WARNING' : 'NOTE';
+    body.push('> [!' + alertType + ']');
+    body.push('> **' + catLabel + '** — Priority: ' + (metadata.priority || 'medium') + (metadata.url ? ' — [Open page](' + metadata.url + ')' : ''));
+    body.push('');
+
+    // Summary table
+    body.push('| Field | Value |');
+    body.push('|-------|-------|');
+    body.push('| **URL** | ' + (metadata.url || 'Unknown') + ' |');
+    body.push('| **Category** | ' + catLabel + ' |');
+    body.push('| **Priority** | ' + (metadata.priority || 'medium') + ' |');
+    body.push('| **Date** | ' + (metadata.date || new Date().toISOString()) + ' |');
+    if (metadata.environment) {
+      body.push('| **Browser** | ' + (metadata.environment.browser || 'Unknown') + ' |');
+      body.push('| **OS** | ' + (metadata.environment.os || 'Unknown') + ' |');
+      body.push('| **Resolution** | ' + (metadata.environment.resolution || 'Unknown') + ' |');
+    }
+    body.push('');
+
+    // Description
+    body.push('## Description');
+    body.push('');
+    body.push(metadata.description || '(No description)');
+    body.push('');
+
+    // Reproduction steps as task list (GFM feature)
+    if (metadata.steps && metadata.steps.length > 0) {
+      body.push('## Reproduction Steps');
+      body.push('');
+      for (var si = 0; si < metadata.steps.length; si++) {
+        var step = metadata.steps[si];
+        var stepDesc = step.description || '(no description)';
+        body.push('- [ ] **Step ' + (si + 1) + ':** ' + stepDesc);
+
+        // Elements
+        if (step.elements && step.elements.length > 0) {
+          for (var ei = 0; ei < step.elements.length; ei++) {
+            var el = step.elements[ei];
+            var elLabel = '`' + el.tagName + (el.classes && el.classes.length ? '.' + el.classes.slice(0, 2).join('.') : '') + '`';
+            body.push('  - Element: ' + elLabel + ' — `' + (el.cssSelector || '') + '`');
+          }
+        }
+
+        // Console errors (summary only, details in collapsible)
+        if (step.consoleLogs && step.consoleLogs.length > 0) {
+          var errCount = 0;
+          for (var ci = 0; ci < step.consoleLogs.length; ci++) {
+            if (step.consoleLogs[ci].level === 'error') errCount++;
+          }
+          body.push('  - Console: ' + step.consoleLogs.length + ' log(s), ' + errCount + ' error(s)');
+        }
+
+        // Network failures (summary only)
+        if (step.networkLogs && step.networkLogs.length > 0) {
+          var failCount = 0;
+          for (var ni = 0; ni < step.networkLogs.length; ni++) {
+            if (step.networkLogs[ni].status >= 400 || step.networkLogs[ni].status === 0) failCount++;
+          }
+          body.push('  - Network: ' + step.networkLogs.length + ' request(s), ' + failCount + ' failed');
+        }
+      }
+      body.push('');
+    }
+
+    // Collapsible sections for detailed data
     var consoleMd = buildConsoleMd(metadata);
     var networkMd = buildNetworkMd(metadata);
     var envMd = buildEnvironmentMd(metadata);
 
     if (consoleMd) {
-      githubBody += '\n\n<details>\n<summary>📋 Console Logs</summary>\n\n' + consoleMd + '\n</details>';
+      body.push('<details>');
+      body.push('<summary>Console Logs</summary>');
+      body.push('');
+      body.push(consoleMd);
+      body.push('</details>');
+      body.push('');
     }
     if (networkMd) {
-      githubBody += '\n\n<details>\n<summary>🌐 Network Requests</summary>\n\n' + networkMd + '\n</details>';
+      body.push('<details>');
+      body.push('<summary>Network Requests</summary>');
+      body.push('');
+      body.push(networkMd);
+      body.push('</details>');
+      body.push('');
     }
     if (envMd) {
-      githubBody += '\n\n<details>\n<summary>💻 Environment</summary>\n\n' + envMd + '\n</details>';
+      body.push('<details>');
+      body.push('<summary>Environment</summary>');
+      body.push('');
+      body.push(envMd);
+      body.push('</details>');
+      body.push('');
+    }
+
+    // Footer
+    body.push('---');
+    body.push('*Generated by [BugJar](https://github.com/jgounand/BugJar)*');
+
+    var githubBody = body.join('\n');
+
+    // Create issue
+    var issuePayload = {
+      title: title,
+      body: githubBody,
+      labels: labels
+    };
+    if (config.assignee) {
+      issuePayload.assignees = [config.assignee];
     }
 
     var response = await bgFetch(
-      url,
+      repoBase + '/issues',
       'POST',
-      {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + config.token,
-        'Accept': 'application/vnd.github+json'
-      },
-      JSON.stringify({
-        title: title,
-        body: githubBody,
-        labels: labels
-      })
+      ghHeaders,
+      JSON.stringify(issuePayload)
     );
 
     var json = response && response.json ? response.json : null;
+    if (!response || !response.success) {
+      return {
+        integration: 'GitHub',
+        success: false,
+        error: (json && json.message) || 'HTTP ' + ((response && response.status) || '?')
+      };
+    }
+
+    var issueNumber = json.number;
+    var issueUrl = json.html_url;
+
+    // Upload screenshots to repo via Contents API, then post as comments
+    // GitHub strips data URIs — images must be hosted as actual files
+    if (metadata.steps) {
+      var dateSlug = (metadata.date || new Date().toISOString()).replace(/[:.]/g, '-').slice(0, 19);
+      for (var ssi = 0; ssi < metadata.steps.length; ssi++) {
+        var ssStep = metadata.steps[ssi];
+        if (!ssStep.screenshots || ssStep.screenshots.length === 0) continue;
+        for (var sci = 0; sci < ssStep.screenshots.length; sci++) {
+          var dataUrl = ssStep.screenshots[sci];
+          if (!dataUrl || dataUrl.indexOf('data:image') !== 0) continue;
+
+          var imgBase64 = dataUrl.split(',')[1];
+          var ext = dataUrl.indexOf('data:image/jpeg') === 0 ? 'jpg' : 'png';
+          var imgPath = '.bugjar/screenshots/' + dateSlug + '-step' + (ssi + 1) + '-' + (sci + 1) + '.' + ext;
+
+          // Upload image file to repo
+          var uploadRes = await bgFetch(
+            repoBase + '/contents/' + imgPath,
+            'PUT',
+            ghHeaders,
+            JSON.stringify({
+              message: 'BugJar: screenshot step ' + (ssi + 1) + ' #' + issueNumber,
+              content: imgBase64
+            })
+          );
+
+          var imgUrl = '';
+          if (uploadRes && uploadRes.success && uploadRes.json && uploadRes.json.content) {
+            imgUrl = uploadRes.json.content.download_url;
+          }
+
+          var commentBody = '### Step ' + (ssi + 1) + ' — Screenshot ' + (sci + 1) + '\n\n';
+          if (ssStep.description) commentBody += '_' + ssStep.description.substring(0, 100) + '_\n\n';
+          if (imgUrl) {
+            commentBody += '![Step ' + (ssi + 1) + ' Screenshot ' + (sci + 1) + '](' + imgUrl + ')';
+          } else {
+            commentBody += '_Screenshot upload failed_';
+          }
+
+          await bgFetch(
+            repoBase + '/issues/' + issueNumber + '/comments',
+            'POST',
+            ghHeaders,
+            JSON.stringify({ body: commentBody })
+          );
+        }
+      }
+    }
+
     return {
       integration: 'GitHub',
-      success: response && response.success,
-      error: (response && response.success) ? undefined : ((json && json.message) || 'HTTP ' + ((response && response.status) || '?')),
-      issueUrl: json ? json.html_url : undefined
+      success: true,
+      issueUrl: issueUrl
     };
   } catch (e) {
     return { integration: 'GitHub', success: false, error: e.message };

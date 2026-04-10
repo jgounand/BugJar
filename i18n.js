@@ -75,7 +75,7 @@ const TRANSLATIONS = {
     intEmailStep3: 'You can customize the subject line (optional)',
     intGithubStep1: 'Go to github.com > Settings > Developer settings > Personal access tokens > Fine-grained tokens',
     intGithubStep2: 'Click "Generate new token", select the repository',
-    intGithubStep3: 'Permissions: Issues > Read and Write',
+    intGithubStep3: 'Permissions: Issues > Read and Write + Contents > Read and Write (for screenshot uploads)',
     intGithubStep4: 'Copy the token (ghp_...) and paste it above',
     // Profiles
     intProfile: 'Profile',
