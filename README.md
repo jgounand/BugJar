@@ -142,6 +142,12 @@ Azure DevOps type can be set to **Auto** (recommended) or forced to a specific t
 
 ## Install
 
+### From Chrome Web Store (recommended)
+
+[**Install BugJar from the Chrome Web Store**](https://chromewebstore.google.com/detail/bugjar/pfngnigkgdhcahhchbhkglkagkaneccb) — one click, auto-updates.
+
+### Manual install (developer mode)
+
 1. Download the [latest release](https://github.com/jgounand/BugJar/releases/latest)
 2. Unzip `BugJar-vX.X.X.zip`
 3. Open `chrome://extensions/` in Chrome
